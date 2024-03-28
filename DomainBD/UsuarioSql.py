@@ -34,8 +34,8 @@ class UsuarioSql(PostgreSqlConn):
                 idGeradoUsuario = cur.fetchone()[0]
 
                 cur.execute(f"""
-                    INSERT INTO ranqueamento(id_usuario,id_temporada, id_andar_atual, data_criacao, data_atualizacao)
-                    VALUES ({idGeradoUsuario}, {temporadaAtual}, {menorAndar}, '{datetime.now()}', '{datetime.now()}')
+                    INSERT INTO ranqueamento(id_usuario,id_temporada, id_andar_atual, data_criacao, data_atualizacao, partidas_para_subir)
+                    VALUES ({idGeradoUsuario}, {temporadaAtual}, {menorAndar}, '{datetime.now()}', '{datetime.now()}', 2)
                 """)
 
                 Retorno.resultado = f"{Nickname} foi registrado como {TipoPerfil}!"

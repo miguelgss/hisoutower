@@ -172,9 +172,9 @@ def run_discord_bot():
         aliases = ['rrp','rp', 'relatar', 'resultado', 'relatarResultado']
     )
     async def RelatarResultadoPartida(ctx, 
-        token: str = commands.parameter(default=None, description="Token identificador da partida a ser atualizada."), 
-        vitoriasDesafiante: int = commands.parameter(default=0, description="Vítorias do desafiante."), 
-        vitoriasDesafiado: int = commands.parameter(default=0, description="Vitórias do desafiado.")):
+        token: str = commands.parameter(description="Token identificador da partida a ser atualizada."), 
+        vitoriasDesafiante: int = commands.parameter(description="Vítorias do desafiante.",), 
+        vitoriasDesafiado: int = commands.parameter(description="Vitórias do desafiado.")):
         usuario = None
         usuario = usuariosDB.GetUsuario(ctx.author.id)
         if(usuario.TipoPerfil != Mensagens.U_ORGANIZADOR):
@@ -187,7 +187,7 @@ def run_discord_bot():
         else:
             resultado = desafiosDB.RelatarResultado(token, vitoriasDesafiante, vitoriasDesafiado)
             await ctx.send(
-            embed = discord.Embed(title=f"Retorno:",
+            embed = discord.Embed(title=f"Resultado:",
             description=resultado.resultado,
             color=resultado.corResultado)
             )

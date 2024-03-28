@@ -22,11 +22,34 @@ class DesafioSql(PostgreSqlConn):
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            cur.execute(f"SELECT id from usuario where discord_id_user = '{IdDiscordDesafiante}' and ativo = '1'")
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual  from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.discord_id_user  = '{IdDiscordDesafiante}' and usuario.ativo = '1'
+                order by ranqueamento.id  desc 
+                """)
             jogadores.append(cur.fetchone())
-            cur.execute(f"SELECT id from usuario where discord_id_user = '{IdDiscordDesafiado}'  and ativo = '1'")
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual  from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.discord_id_user  = '{IdDiscordDesafiado}' and usuario.ativo = '1'
+                order by ranqueamento.id  desc 
+                """)
             jogadores.append(cur.fetchone())
+
+            print(jogadores)
             if(jogadores[0] != None and jogadores[1] != None):
+
+                # Comparação de andares entre os jogadores:
+                if(jogadores[0][2] > 2):
+                    if(jogadores[1][2] == 1):
+                        cur.close()
+                        conn.close()
+                        Retorno.resultado += "Apenas o jogador mais próximo do campeão pode desafiá-lo."
+                        Retorno.corResultado = Cores.Alerta
+                        return Retorno
+
+                # Valida se o desafiador e/ou desafiante já possuem desafios em andamento
                 cur.execute(f"""
                     SELECT ID FROM historico_partidas 
                     where (id_usuario_desafiante = '{jogadores[0][0]}' or
@@ -97,12 +120,63 @@ class DesafioSql(PostgreSqlConn):
     
     def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado):
         Retorno = DBResultado()
-        jogadores = []
+        partida = ''
         dataAtual = datetime.now()
         estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO, Mensagens.EP_CONCLUIDO, Mensagens.EP_RECUSADO])
+        estadoPartidaConcluida = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CONCLUIDO])
+        idEstadoPartidasFinalizadas = [o.Id for o in estadoPartidaFinalizada]
+        VitoriosoId = 0
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
+            if(vitoriasDesafiante != 4 and vitoriasDesafiado != 4 or (vitoriasDesafiante > 4 or vitoriasDesafiado > 4) or (vitoriasDesafiante == 4 and vitoriasDesafiado == 4)):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "As partidas são FT4! Apenas um deve deve ter 4 vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+            cur.execute(f"""     
+                select id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida
+                from historico_partidas hp
+                where hp.token = '{token}'
+                """)
+            partida = cur.fetchone()
+            
+            if(partida[3] in idEstadoPartidasFinalizadas):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "Essa partida já foi concluída ou cancelada, não é possível mudar o seu estado ou resultado."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+
+            VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
+            cur.execute(f"""
+                    UPDATE 
+                        historico_partidas set id_estado_partida = {estadoPartidaConcluida[0].Id}, 
+                        usuario_desafiante_vitorias = {vitoriasDesafiante}, 
+                        usuario_desafiado_vitorias = {vitoriasDesafiado}, 
+                        id_usuario_vencedor = {VitoriosoId},
+                        data_finalizacao = '{dataAtual}'
+                    WHERE token = '{token}'
+                """)
+            
+            # ADICIONAR MÉTODO GERAL PARA ATUALIZAR O RANQUEAMENTO POR CONTA DA MODIFICAÇÃO DA PARTIDA
+            print('chegou aqui')
+            usuarios = []
+            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[1]}")
+            usuarios.append(cur.fetchone())
+            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[2]}")
+            usuarios.append(cur.fetchone())
+
+            vitoriosoNome = usuarios[0][1] if usuarios[0][0] == VitoriosoId else usuarios[1][1]
+            
+            Retorno.resultado = f"""
+                    ## <@{usuarios[0][1]}> [{vitoriasDesafiante}] VS [{vitoriasDesafiado}] <@{usuarios[1][1]}> 
+                    ### PARTIDA CONCLUÍDA! PARABÉNS <@{vitoriosoNome}>
+                    """
+
+            Retorno.corResultado = Cores.Sucesso
+            conn.commit()
             cur.close()
             conn.close()
             Retorno.corResultado = Cores.Sucesso
