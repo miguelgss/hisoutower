@@ -21,3 +21,37 @@ class Mensagens():
     A_SEGUNDO = "SEGUNDO[ELITE]"
     A_TERCEIRO = "TERCEIRO[ELITE]"
     A_QUARTO = "QUARTO[ELITE]"
+
+    LISTA_FICHA_PERSONAGENS = [
+        "alice",
+        "aya",
+        "cirno",
+        "iku",
+        "komachi",
+        "marisa",
+        "meiling",
+        "okuu",
+        "patchy",
+        "reimu",
+        "reisen",
+        "remilia",
+        "sakuya",
+        "sanae",
+        "suika",
+        "suwako",
+        "tenshi",
+        "youmu",
+        "yukari",
+        "yuyuko",
+    ]
+
+    LISTA_ICONES_ANDARES = [
+        'campeao',
+        'elite1',
+        'elite2',
+        'elite3',
+        'elite4',
+        'torre1',
+        'torre2',
+        'torre3'
+    ]

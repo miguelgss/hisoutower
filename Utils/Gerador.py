@@ -16,6 +16,48 @@ class Gerador():
 
         return f"gensou-{password}"
 
+    async def GerarCardPerfil(jogador, tipoFicha, andarAtual, podeSubirDeRank, podeDescerDeRank):
+        avatarSize = (62, 62)
+        nome = str(jogador.display_name)
+
+        template = Image.open(f"Utils/assets/botficha/base_ficha/{tipoFicha}.png").convert("RGBA")
+        iconeRank = Image.open(f"Utils/assets/botficha/sprites/floor/{andarAtual}.png")
+        upRank = Image.open(f"Utils/assets/botficha/sprites/rate/rateup.png")
+        downRank = Image.open(f"Utils/assets/botficha/sprites/rate/ratedown.png")
+
+        # Configura a foto do usuário
+        picJogador = jogador.avatar
+        dataJogador = BytesIO(await picJogador.read())
+        picJogador = Image.open(dataJogador).convert("RGBA")
+        picJogador = picJogador.resize(avatarSize, Image.ANTIALIAS).convert("RGBA")
+
+        # Começa a "desenhar" o card do jogador
+        draw = ImageDraw.Draw(template)
+
+        # fontNome = ImageFont.truetype("Utils/assets/fonts/.ttf", 26)
+        # fontAndar = ImageFont.truetype("Utils/assets/fonts/Lato-Regular.ttf", 12)
+        fontNome = ImageFont.truetype("Utils/assets/fonts/spiegel.ttf", 30)
+        fontAndar = ImageFont.truetype("Utils/assets/fonts/spiegel.ttf", 14)
+
+        ascent, descent = fontNome.getmetrics()
+        (width, baseline), (offset_x, offset_y) = fontNome.font.getsize(nome)
+
+        draw.text((210-(width/2),8), nome, font=fontNome, fill=(255,255,255, 255), stroke_fill=(0,0,0,255), stroke_width=1)
+        draw.text((110,66), andarAtual.upper(), font=fontAndar, fill=(255,255,255, 255), stroke_fill=(0,0,0,255), stroke_width=1)
+
+        template.paste(picJogador, (21,31), picJogador)
+        template.paste(iconeRank, (3,0), iconeRank)
+        if(podeSubirDeRank):
+            template.paste(upRank, (20, 0), upRank)
+        if(podeDescerDeRank):
+            template.paste(downRank, (20, 0), downRank)
+
+        retorno = None
+        img = BytesIO()
+        template.save(img, "PNG")
+        img.seek(0)
+        return img
+        
     async def GerarCardDesafio(desafiante, desafiado):
         dataExpiracao = datetime.now() + timedelta(days=3)
         textExpiracao = f"PRAZO: {dataExpiracao.day}/{dataExpiracao.month}/{dataExpiracao.year}"

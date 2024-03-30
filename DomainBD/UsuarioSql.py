@@ -8,6 +8,7 @@ from .DataTransferObjects import DBResultado, UsuarioDTO
 class UsuarioSql(PostgreSqlConn):
     def __init__(self):
         super(UsuarioSql, self).__init__()
+        self.Gerador = Gerador()
 
     def RegisterUser(self, IdDiscord, Nickname, TipoPerfil):
         Retorno = DBResultado()
@@ -34,8 +35,8 @@ class UsuarioSql(PostgreSqlConn):
                 idGeradoUsuario = cur.fetchone()[0]
 
                 cur.execute(f"""
-                    INSERT INTO ranqueamento(id_usuario,id_temporada, id_andar_atual, data_criacao, data_atualizacao, partidas_para_subir)
-                    VALUES ({idGeradoUsuario}, {temporadaAtual}, {menorAndar}, '{datetime.now()}', '{datetime.now()}', 2)
+                    INSERT INTO ranqueamento(id_usuario,id_temporada, id_andar_atual, data_criacao, data_atualizacao, partidas_para_subir, partidas_para_descer, vitorias_consecutivas)
+                    VALUES ({idGeradoUsuario}, {temporadaAtual}, {menorAndar}, '{datetime.now()}', '{datetime.now()}', 2, 2, 0)
                 """)
 
                 Retorno.resultado = f"{Nickname} foi registrado como {TipoPerfil}!"
@@ -68,7 +69,16 @@ class UsuarioSql(PostgreSqlConn):
             if(pesquisa != None):
                 if(pesquisa[2] == '1'):
                     cur.execute(f"""
-                        UPDATE usuario set ativo = '0' where ativo = '1' and id = {pesquisa[0]};
+                        UPDATE 
+                            usuario set ativo = '0' 
+                            WHERE ativo = '1' and id = {pesquisa[0]};
+
+                        UPDATE
+                            ranqueamento set
+                                id_andar_atual = 2,
+                                partidas_para_subir = 2,
+                                partidas_para_descer = 2,
+                            WHERE id_usuario = {pesquisa[0]}
                     """)
                     Retorno.resultado = "Saiu com sucesso."
                 if(pesquisa[2] == '0'):
@@ -97,15 +107,26 @@ class UsuarioSql(PostgreSqlConn):
             cur = conn.cursor()
 
             if not nome or nome.isspace():
-                cur.execute(f"SELECT nome, tipo_perfil, ativo, dados_publicos FROM usuario")
+                cur.execute(f"""
+                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.nome, r.partidas_para_subir
+                    FROM usuario
+                    JOIN ranqueamento r on id_usuario = usuario.id  
+                    JOIN andar a on a.id = r.id_andar_atual  
+                    """)
             else:
-                cur.execute(f"SELECT nome, tipo_perfil, ativo, dados_publicos FROM usuario WHERE position('{nome}' in nome) > 0")
+                cur.execute(f"""
+                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.nome, r.partidas_para_subir
+                    FROM usuario
+                    JOIN ranqueamento r on id_usuario = usuario.id  
+                    JOIN andar a on a.id = r.id_andar_atual 
+                    WHERE position('{nome}' in usuario.nome) > 0
+                """)
 
             usuarios = cur.fetchall()
             for usuario in usuarios:
                 ativo = 'Ativo' if usuario[2] == '1' else 'Inativo'
                 historico = 'público' if usuario[3] == '1' else 'privado'
-                Retorno.resultado += f'''Nome:{usuario[0]: <12};{usuario[1]: <8};{ativo:<5};Histórico:{historico:<5}\n'''
+                Retorno.resultado += f'''- {usuario[0]: <12};{usuario[1]: <8};{ativo:<5};Histórico:{historico:<5};R: {usuario[4]}; ToUp: {usuario[5]} \n'''
 
             cur.close()
             conn.close()
@@ -151,6 +172,64 @@ class UsuarioSql(PostgreSqlConn):
             conn.rollback()
             cur.close()
             conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    async def ObterPerfil(self, discordUser, tipoFicha:str):
+        Retorno = DBResultado()
+        tipoFicha = tipoFicha.lower()
+        try:
+            conn = psycopg2.connect(self.connectionString)
+            cur = conn.cursor()
+
+            cur.execute(f"""
+                    SELECT a.id, r.partidas_para_subir, r.partidas_para_descer, usuario.tipo_ficha
+                    FROM usuario
+                    JOIN ranqueamento r on id_usuario = usuario.id  
+                    JOIN andar a on a.id = r.id_andar_atual 
+                    WHERE usuario.discord_id_user = '{discordUser.id}' 
+                    """)
+            jogador = cur.fetchone()
+            
+            if(jogador == None):
+                Retorno.resultado = Mensagens.UsuarioNaoEncontrado
+                Retorno.corResultado = Cores.Erro
+                return Retorno
+
+            andarAtual = Mensagens.LISTA_ICONES_ANDARES[jogador[0] - 1]
+            print(tipoFicha)
+            if(tipoFicha in Mensagens.LISTA_FICHA_PERSONAGENS):
+                if(tipoFicha != jogador[3]):
+                    cur.execute(f"""
+                        UPDATE usuario SET
+                            tipo_ficha = '{tipoFicha}'
+                            WHERE discord_id_user = '{discordUser.id}';
+                        """)
+
+                    cur.execute(f"""
+                        SELECT a.id, r.partidas_para_subir, r.partidas_para_descer, usuario.tipo_ficha
+                        FROM usuario
+                        JOIN ranqueamento r on id_usuario = usuario.id  
+                        JOIN andar a on a.id = r.id_andar_atual 
+                        WHERE usuario.discord_id_user = '{discordUser.id}' 
+                        """)
+                    jogador = cur.fetchone()
+                    conn.commit()
+                Retorno.resultado = await Gerador.GerarCardPerfil(discordUser, jogador[3], andarAtual, jogador[1] < 2, jogador[2] < 2)            
+                Retorno.corResultado = Cores.Sucesso
+            elif(tipoFicha == ''):
+                Retorno.resultado = await Gerador.GerarCardPerfil(discordUser, jogador[3], andarAtual, jogador[1] < 2, jogador[2] < 2)            
+                Retorno.corResultado = Cores.Sucesso
+            else:
+                Retorno.resultado = f"Não foi possível achar o tipo de ficha informado. Tente algum dos seguintes nomes: {Mensagens.LISTA_FICHA_PERSONAGENS}"
+                Retorno.corResultado = Cores.Alerta
+            
+            cur.close()
+            conn.close()
+            return Retorno
+
+        except Exception as e:
             Retorno.resultado += "Ocorreu um erro: \n" + str(e)
             Retorno.corResultado = Cores.Erro
         return Retorno

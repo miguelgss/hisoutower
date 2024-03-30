@@ -58,3 +58,23 @@ class TabelasDominioSql(PostgreSqlConn):
         conn.close()
 
         return Retorno
+
+    def GetTemporadaAtual(self):
+        Retorno = None
+        temporada = None
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        stringQuery = "SELECT id, nome, temporada_ativa FROM temporada ORDER BY temporada.id DESC LIMIT 1"
+        cur.execute(stringQuery)
+        temporada = cur.fetchone()
+
+        temporada = TemporadaDTO()
+        temporada.Id = atualizacao[0]
+        temporada.Nome = atualizacao[1]
+        temporada.TemporadaAtiva = atualizacao[2]
+        
+        Retorno = temporada        
+        cur.close()
+        conn.close()
+
+        return Retorno

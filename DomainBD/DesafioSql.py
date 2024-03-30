@@ -14,6 +14,7 @@ class DesafioSql(PostgreSqlConn):
     def Desafiar(self, IdDiscordDesafiante, IdDiscordDesafiado):
         Retorno = DBResultado()
         jogadores = []
+        jogadoresTop = []
         dataAtual = datetime.now()
         dataExpiracao = dataAtual + timedelta(days=3)
         tokenPartida = ""
@@ -23,31 +24,47 @@ class DesafioSql(PostgreSqlConn):
         cur = conn.cursor()
         try:
             cur.execute(f"""
-                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual  from usuario
+                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual, ranqueamento.vitorias_consecutivas from usuario
                 join ranqueamento on id_usuario = usuario.id 
                 where usuario.discord_id_user  = '{IdDiscordDesafiante}' and usuario.ativo = '1'
                 order by ranqueamento.id  desc 
                 """)
             jogadores.append(cur.fetchone())
             cur.execute(f"""
-                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual  from usuario
+                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual, ranqueamento.vitorias_consecutivas from usuario
                 join ranqueamento on id_usuario = usuario.id 
                 where usuario.discord_id_user  = '{IdDiscordDesafiado}' and usuario.ativo = '1'
                 order by ranqueamento.id  desc 
                 """)
             jogadores.append(cur.fetchone())
-
-            print(jogadores)
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
+                from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6
+                order by ranqueamento.id_andar_atual  desc 
+                """)
+            jogadoresTop = cur.fetchall()
+            
             if(jogadores[0] != None and jogadores[1] != None):
-
                 # Comparação de andares entre os jogadores:
-                if(jogadores[0][2] > 2):
+                if(jogadores[0][2] > 2 and len(jogadoresTop) > 1):
                     if(jogadores[1][2] == 1):
                         cur.close()
                         conn.close()
                         Retorno.resultado += "Apenas o jogador mais próximo do campeão pode desafiá-lo."
                         Retorno.corResultado = Cores.Alerta
                         return Retorno
+                
+                minimoVitorias = 2
+                if(( jogadores[0][2] > 6 and jogadores[1][2] <= jogadoresTop[-1][1]) or 
+                    (jogadores[0][2] == 6 and (jogadores[1][2] < jogadoresTop[-1][1]) or 
+                    (jogadores[0][3] < minimoVitorias and jogadores[1][2] == jogadoresTop[-1][1]))):
+                    cur.close()
+                    conn.close()
+                    Retorno.resultado += "É necessário estar no maior andar possível e **possuir duas vitórias consecutivas** para desafiar o último da elite. **Jogadores em andar da torre não podem desafiar jogadores celestiais, exceto pelo último jogador celestial.**"
+                    Retorno.corResultado = Cores.Alerta
+                    return Retorno
 
                 # Valida se o desafiador e/ou desafiante já possuem desafios em andamento
                 cur.execute(f"""
@@ -161,7 +178,7 @@ class DesafioSql(PostgreSqlConn):
                 """)
             
             # ADICIONAR MÉTODO GERAL PARA ATUALIZAR O RANQUEAMENTO POR CONTA DA MODIFICAÇÃO DA PARTIDA
-            print('chegou aqui')
+            
             usuarios = []
             cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[1]}")
             usuarios.append(cur.fetchone())
@@ -180,6 +197,87 @@ class DesafioSql(PostgreSqlConn):
             cur.close()
             conn.close()
             Retorno.corResultado = Cores.Sucesso
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado):
+        Retorno = DBResultado()
+        jogadores = []
+        jogadoresTop = []
+        tokenPartida = ""
+        temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer 
+                from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.discord_id_user  = '{IdDiscordVitorioso}' and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.id}
+                order by ranqueamento.id  desc 
+                """)
+            jogadores.append(cur.fetchone())
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer
+                from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.discord_id_user  = '{IdDiscordDerrotado}' and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.id}
+                order by ranqueamento.id  desc 
+                """)
+            jogadores.append(cur.fetchone())
+
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
+                from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6
+                order by ranqueamento.id  desc 
+                """)
+            jogadoresTop = cur.fetchall()
+
+            if(jogadores[0] != None and jogadores[1] != None):
+                if(jogadores[0][1] > 5): # Se o andar do jogador for fora da elite...
+                    if(jogadores[0][1] >= jogadores[0][1]): # Comparando os andares
+                        if(jogadores[0][2] < 2):
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    id_andar_atual = {(jogadores[0][1] - 1)}
+                                    partidas_para_subir = 2
+                                    partidas_para_descer = 2
+                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.id}
+                                """)
+                        else:
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    partidas_para_subir = 1
+                                    partidas_para_descer = 2
+                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.id}
+                                """)
+                
+                Retorno.resultado = f"""
+                    ## <@{IdDiscordDesafiante}> VS <@{IdDiscordDesafiado}> 
+                    ### DESAFIO REGISTRADO PARA ATÉ {dataExpiracao.day}/{dataExpiracao.month}/{dataExpiracao.year}
+                    ### TOKEN IDENTIFICADOR DA PARTIDA: 
+                    ### ```{tokenPartida}``` """
+                Retorno.corResultado = Cores.Sucesso
+                
+            elif(jogadores[0] == None):
+                Retorno.resultado = "O desafiante não está registrado no evento ou está inativo."
+                Retorno.corResultado = Cores.Alerta
+            elif(jogadores[1] == None):
+                Retorno.resultado = "O desafiado não está registrado no evento ou está inativo."
+                Retorno.corResultado = Cores.Alerta
+
+            # conn.commit()
+            cur.close()
+            conn.close()
+
         except Exception as e:
             cur.close()
             conn.close()

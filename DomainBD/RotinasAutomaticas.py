@@ -35,7 +35,7 @@ class RotinasAutomaticas(PostgreSqlConn):
                 contador += 1
 
             cur.execute(f"""
-                    UPDATE historico_partidas set id_estado_partida = {estadoPartidaFinalizada[0].Id}
+                    UPDATE historico_partidas set id_estado_partida = {estadoPartidaFinalizada[0].Id}, data_finalizacao = '{dataAtual}'
                     WHERE data_expiracao < '{dataAtual}' and
                     id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id}
                 """)

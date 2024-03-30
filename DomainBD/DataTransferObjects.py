@@ -15,3 +15,8 @@ class EstadoPartidaDTO():
 class TipoAtualizacaoDTO():
     Id = None
     Nome = ''
+
+class TemporadaDTO():
+    Id = None
+    Nome = ''
+    TemporadaAtiva = False

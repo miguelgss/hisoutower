@@ -34,8 +34,8 @@ def run_discord_bot():
     desafiosDB = DesafioSql()
     usuariosDB = UsuarioSql()
     tabelasDominioDB = TabelasDominioSql()
+    
     # Inicia o bot
-
     @bot.event
     async def on_ready():
         if not checkMatches.is_running():
@@ -79,7 +79,7 @@ def run_discord_bot():
 
     @bot.command(
         brief=f'Se adiciona como {Mensagens.U_JOGADOR}', 
-        description='Se adiciona ao hisoutower como {Mensagens.U_JOGADOR}, permitindo desafiar outros jogadores e participar do ranqueamento.',
+        description=f'Se adiciona ao hisoutower como {Mensagens.U_JOGADOR}, permitindo desafiar outros jogadores e participar do ranqueamento.',
         aliases = ['addme','am','adicioneme'])
     async def MeAdicionar(ctx):
         resultado = usuariosDB.RegisterUser(ctx.message.author.id, ctx.message.author.name, Mensagens.U_JOGADOR)
@@ -88,6 +88,27 @@ def run_discord_bot():
             description=resultado.resultado,
             color=resultado.corResultado)
         )
+
+    @bot.command(
+        brief=f'Retorna uma ficha informativa do usuário.', 
+        description='Retorna uma ficha informativa com a posição atual do usuário e se irá subir/descer de rank dependendo do resultado da próxima partida.',
+        aliases = ['mf','ficha','minhaficha'])
+    async def MinhaFicha(ctx,
+            tipoFicha:str = commands.parameter(default='', description=f"Permite escolher entre as seguintes personagens: {Mensagens.LISTA_FICHA_PERSONAGENS}.")
+        ):
+        resultado = await usuariosDB.ObterPerfil(ctx.message.author, tipoFicha)
+        if(type(resultado.resultado) == str):
+            await ctx.send(
+                embed = discord.Embed(title=f"Ocorreu algum imprevisto...",
+                description=resultado.resultado,
+                color=resultado.corResultado)
+            )
+        else:
+            try:
+                file = discord.File(resultado.resultado, filename=f"ficha_{ctx.message.author.display_name}.png")
+                await ctx.send("", file=file)
+            except Exception as e:
+                await ctx.send(str(e))
 
     @bot.command(
         brief=f'Lista os jogadores registrados de acordo com nome.', 
@@ -99,7 +120,7 @@ def run_discord_bot():
         resultado = usuariosDB.ListarUsuarios(nome)
         await ctx.send(
             embed = discord.Embed(title=f"Jogadores:",
-            description=f'''```{resultado.resultado}```''',
+            description=f'''{resultado.resultado}''',
             color=resultado.corResultado)
         )
 
@@ -143,8 +164,14 @@ def run_discord_bot():
     async def Desafiar(ctx, 
         user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):
         resultado = desafiosDB.Desafiar(ctx.author.id, user.id)
-        await ctx.send(resultado.resultado)
-
+        if(resultado.corResultado == Cores.Sucesso):
+            await ctx.send(resultado.resultado)
+        else:
+            await ctx.send(
+                embed = discord.Embed(title=f"Ocorreu algum erro no desafio...",
+                description=f'''{resultado.resultado}''',
+                color=resultado.corResultado)
+            )
     ### - COMANDOS COM PERMISSIONAMENTO (ORGANIZADORES)
     @bot.command(
         brief=f'Muda o usuário entre {Mensagens.U_JOGADOR} e {Mensagens.U_ORGANIZADOR}', 
