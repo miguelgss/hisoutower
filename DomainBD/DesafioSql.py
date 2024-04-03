@@ -37,12 +37,13 @@ class DesafioSql(PostgreSqlConn):
                 order by ranqueamento.id  desc 
                 """)
             jogadores.append(cur.fetchone())
+
             cur.execute(f"""
                 select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
                 from usuario
                 join ranqueamento on id_usuario = usuario.id 
                 where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6
-                order by ranqueamento.id_andar_atual  desc 
+                order by ranqueamento.id_andar_atual 
                 """)
             jogadoresTop = cur.fetchall()
             
@@ -57,9 +58,11 @@ class DesafioSql(PostgreSqlConn):
                         return Retorno
                 
                 minimoVitorias = 2
-                if(( jogadores[0][2] > 6 and jogadores[1][2] <= jogadoresTop[-1][1]) or 
-                    (jogadores[0][2] == 6 and (jogadores[1][2] < jogadoresTop[-1][1]) or 
-                    (jogadores[0][3] < minimoVitorias and jogadores[1][2] == jogadoresTop[-1][1]))):
+                if  (
+                        (jogadores[0][2] > 6 and jogadoresTop != [] and jogadores[1][2] <= jogadoresTop[-1][1]) or 
+                        (jogadores[0][2] == 6 and jogadoresTop != [] and (jogadores[1][2] < jogadoresTop[-1][1]) or 
+                        (jogadores[0][3] < minimoVitorias and jogadoresTop != [] and jogadores[1][2] == jogadoresTop[-1][1]))
+                    ):
                     cur.close()
                     conn.close()
                     Retorno.resultado += "É necessário estar no maior andar possível e **possuir duas vitórias consecutivas** para desafiar o último da elite. **Jogadores em andar da torre não podem desafiar jogadores celestiais, exceto pelo último jogador celestial.**"
@@ -167,6 +170,8 @@ class DesafioSql(PostgreSqlConn):
                 return Retorno
 
             VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
+            DerrotadoId = partida[1] if vitoriasDesafiante < vitoriasDesafiado else partida[2]
+            
             cur.execute(f"""
                     UPDATE 
                         historico_partidas set id_estado_partida = {estadoPartidaConcluida[0].Id}, 
@@ -178,6 +183,13 @@ class DesafioSql(PostgreSqlConn):
                 """)
             
             # ADICIONAR MÉTODO GERAL PARA ATUALIZAR O RANQUEAMENTO POR CONTA DA MODIFICAÇÃO DA PARTIDA
+            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, False)
+            if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
+                cur.close()
+                conn.close()
+                Retorno.resultado += resultado.resultado
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
             
             usuarios = []
             cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[1]}")
@@ -204,28 +216,22 @@ class DesafioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
 
-    def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado):
+    def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado, foiEmpate):
         Retorno = DBResultado()
+        dataAtual = datetime.now()
         jogadores = []
         jogadoresTop = []
         tokenPartida = ""
         temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
+        numeroDeAndaresAtual = self.tabelasDominioDB.GetNumeroDeAndaresAtual()
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
             cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer 
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
                 from usuario
                 join ranqueamento on id_usuario = usuario.id 
-                where usuario.discord_id_user  = '{IdDiscordVitorioso}' and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.id}
-                order by ranqueamento.id  desc 
-                """)
-            jogadores.append(cur.fetchone())
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer
-                from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.discord_id_user  = '{IdDiscordDerrotado}' and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.id}
+                where usuario.id  = {IdDiscordVitorioso} and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.Id}
                 order by ranqueamento.id  desc 
                 """)
             jogadores.append(cur.fetchone())
@@ -234,51 +240,188 @@ class DesafioSql(PostgreSqlConn):
                 select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
                 from usuario
                 join ranqueamento on id_usuario = usuario.id 
-                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6
+                where usuario.id  = {IdDiscordDerrotado} and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.Id}
                 order by ranqueamento.id  desc 
                 """)
-            jogadoresTop = cur.fetchall()
+            jogadores.append(cur.fetchone())
 
-            if(jogadores[0] != None and jogadores[1] != None):
-                if(jogadores[0][1] > 5): # Se o andar do jogador for fora da elite...
-                    if(jogadores[0][1] >= jogadores[0][1]): # Comparando os andares
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
+                from usuario
+                join ranqueamento on id_usuario = usuario.id 
+                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6 and ranqueamento.id_temporada = {temporadaAtual.Id}
+                order by ranqueamento.id_andar_atual
+                """)
+            jogadoresTop = cur.fetchall()
+            
+            if(jogadores[0] != None and jogadores[1] != None and not foiEmpate):
+                if(jogadores[0][1] > 5): # Se o andar do jogador vitorioso for da torre...
+                    if(jogadores[0][1] >= jogadores[1][1] and jogadores[1][1] > 6): # Comparando os andares
                         if(jogadores[0][2] < 2):
                             cur.execute(f"""
                                 UPDATE ranqueamento SET
-                                    id_andar_atual = {(jogadores[0][1] - 1)}
-                                    partidas_para_subir = 2
-                                    partidas_para_descer = 2
+                                    id_andar_atual = {(jogadores[0][1] - 1)},
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
                                     vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.id}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
                                 """)
                         else:
                             cur.execute(f"""
                                 UPDATE ranqueamento SET
-                                    partidas_para_subir = 1
-                                    partidas_para_descer = 2
+                                    partidas_para_subir = 1,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
                                     vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.id}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
                                 """)
-                
-                Retorno.resultado = f"""
-                    ## <@{IdDiscordDesafiante}> VS <@{IdDiscordDesafiado}> 
-                    ### DESAFIO REGISTRADO PARA ATÉ {dataExpiracao.day}/{dataExpiracao.month}/{dataExpiracao.year}
-                    ### TOKEN IDENTIFICADOR DA PARTIDA: 
-                    ### ```{tokenPartida}``` """
-                Retorno.corResultado = Cores.Sucesso
-                
-            elif(jogadores[0] == None):
-                Retorno.resultado = "O desafiante não está registrado no evento ou está inativo."
-                Retorno.corResultado = Cores.Alerta
-            elif(jogadores[1] == None):
-                Retorno.resultado = "O desafiado não está registrado no evento ou está inativo."
-                Retorno.corResultado = Cores.Alerta
 
-            # conn.commit()
+                        if(jogadores[1][3] < 2):
+                            estaNoUltimoAndar = 0 if jogadores[1][1] == numeroDeAndaresAtual else 1
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    id_andar_atual = {(jogadores[1][1] + estaNoUltimoAndar)},
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = 0
+                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+                        else:
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 1,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = 0,
+                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+
+                    elif(jogadores[0][1] >= jogadores[1][1] and len(jogadoresTop) < 1): #Quando não tiver nenhum jogador celestial na temporada atual...
+
+                        if(jogadores[0][2] < 2):
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    id_andar_atual = 1,
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+                        else:
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    partidas_para_subir = 1,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+
+                        if(jogadores[1][3] < 2):
+                            estaNoUltimoAndar = 0 if jogadores[1][1] == numeroDeAndaresAtual else 1
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    id_andar_atual = {(jogadores[1][1] + estaNoUltimoAndar)},
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 2,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = 0
+                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+                        else:
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                    partidas_para_subir = 2,
+                                    partidas_para_descer = 1,
+                                    data_atualizacao = '{dataAtual}',
+                                    vitorias_consecutivas = 0
+                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                                """)
+                        
+                    elif(jogadores[0][1] == 6 and jogadores[1][1] == jogadoresTop[-1][1]):
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                id_andar_atual = {jogadores[-1][1]},
+                                partidas_para_subir = 2,
+                                partidas_para_descer = 2,
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                id_andar_atual = {(jogadores[1][1] + 1)},
+                                partidas_para_subir = 2,
+                                partidas_para_descer = 2,
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = 0
+                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+
+                else: # Se o jogador vitorioso fizer parte dos celestiais...
+                    if(jogadores[0][1] >= jogadores[1][1]): # Comparando os andares
+                        posicaoTomada = jogadores[0][1] - 1
+
+                        cur.execute(f"""
+                                SELECT ranqueamento.id, ranqueamento.id_andar_atual FROM ranqueamento
+                                JOIN usuario on usuario.id = ranqueamento.id_usuario 
+                                WHERE usuario.ativo = '1' and 
+                                ranqueamento.id_andar_atual >= {posicaoTomada} and 
+                                ranqueamento.id_andar_atual < 6 and 
+                                ranqueamento.id_temporada = {temporadaAtual.Id} and
+                                ranqueamento.id_usuario != {jogadores[0][0]}
+                                order by ranqueamento.id desc;
+                            """)
+
+                        jogadoresRebaixados = cur.fetchall()
+
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                id_andar_atual = {posicaoTomada},
+                                partidas_para_subir = 2,
+                                partidas_para_descer = 2,
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+
+                        # for jgdRebaixado in jogadoresRebaixados:
+                        #     cur.execute(f"""
+                        #         UPDATE ranqueamento SET
+                        #         id_andar_atual = {jgdRebaixado[1]+1},
+                        #         data_atualizacao = '{dataAtual}'
+                        #         WHERE id = {jgdRebaixado[0]}
+                        #     """)
+
+                        vaiTomarPosicaoDoPerdedor = 1 if posicaoTomada == jogadores[1][1] else 0
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                id_andar_atual = {jogadores[1][1] + vaiTomarPosicaoDoPerdedor},
+                                partidas_para_subir = 2,
+                                partidas_para_descer = 2,
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = 0
+                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
+                            """) 
+                Retorno.resultado = "Tudo certo com a atualização de resultados!"
+                Retorno.corResultado = Cores.Sucesso               
+            # elif(jogadores[0] == None):
+            #     Retorno.resultado = "O desafiante não está registrado no evento ou está inativo."
+            #     Retorno.corResultado = Cores.Alerta
+            # elif(jogadores[1] == None):
+            #     Retorno.resultado = "O desafiado não está registrado no evento ou está inativo."
+            #     Retorno.corResultado = Cores.Alerta
+
+            conn.commit()
             cur.close()
             conn.close()
 
+            
         except Exception as e:
+            conn.rollback()
             cur.close()
             conn.close()
             Retorno.resultado += "Ocorreu um erro: \n" + str(e)

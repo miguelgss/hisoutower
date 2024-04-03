@@ -198,7 +198,6 @@ class UsuarioSql(PostgreSqlConn):
                 return Retorno
 
             andarAtual = Mensagens.LISTA_ICONES_ANDARES[jogador[0] - 1]
-            print(tipoFicha)
             if(tipoFicha in Mensagens.LISTA_FICHA_PERSONAGENS):
                 if(tipoFicha != jogador[3]):
                     cur.execute(f"""

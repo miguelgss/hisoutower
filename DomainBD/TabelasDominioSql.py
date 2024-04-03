@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
 from .PostgreSqlConn import PostgreSqlConn
-from .DataTransferObjects import TipoAtualizacaoDTO, EstadoPartidaDTO
+from .DataTransferObjects import TipoAtualizacaoDTO, EstadoPartidaDTO, TemporadaDTO
 
 class TabelasDominioSql(PostgreSqlConn):
     def __init__(self):
@@ -60,20 +60,33 @@ class TabelasDominioSql(PostgreSqlConn):
         return Retorno
 
     def GetTemporadaAtual(self):
-        Retorno = None
+        Retorno = TemporadaDTO()
         temporada = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
-        stringQuery = "SELECT id, nome, temporada_ativa FROM temporada ORDER BY temporada.id DESC LIMIT 1"
+        stringQuery = "SELECT id, nome, temporada_ativa FROM temporada WHERE temporada_ativa = '1' ORDER BY temporada.id DESC LIMIT 1 "
         cur.execute(stringQuery)
         temporada = cur.fetchone()
 
-        temporada = TemporadaDTO()
-        temporada.Id = atualizacao[0]
-        temporada.Nome = atualizacao[1]
-        temporada.TemporadaAtiva = atualizacao[2]
+        Retorno.Id = temporada[0]
+        Retorno.Nome = temporada[1]
+        Retorno.TemporadaAtiva = temporada[2]
+               
+        cur.close()
+        conn.close()
+
+        return Retorno
+
+    def GetNumeroDeAndaresAtual(self):
+        Retorno = None
+        numeroAndares = None
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        stringQuery = "SELECT id, nome FROM andar ORDER BY id"
+        cur.execute(stringQuery)
+        numeroAndares = cur.fetchall()
         
-        Retorno = temporada        
+        Retorno = len(numeroAndares)
         cur.close()
         conn.close()
 
