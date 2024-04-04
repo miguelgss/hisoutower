@@ -138,6 +138,87 @@ class DesafioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
     
+    def RecusarDesafio(self, token, IdDiscordAnulador):
+        Retorno = DBResultado()
+        dataAtual = datetime.now()
+        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO, Mensagens.EP_CONCLUIDO, Mensagens.EP_RECUSADO])
+        idEstadoPartida = None
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+                select usuario.id, ranqueamento.id_andar_atual from usuario
+                join ranqueamento on ranqueamento.id_usuario = usuario.id
+                where usuario.discord_id_user  = '{IdDiscordAnulador}' and usuario.ativo = '1'
+                """)
+            jogador = cur.fetchone()
+            
+            if(jogador == None):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "O usuário não existe."
+                Retorno.corResultado = Cores.Erro
+                return Retorno
+
+            cur.execute(f"""
+                    SELECT ID, id_usuario_desafiante, id_usuario_desafiado FROM historico_partidas 
+                    where token = '{token}' and 
+                    id_usuario_desafiado = {jogador[0]} or
+                    id_usuario_desafiante = {jogador[0]} 
+                    (id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id})
+                """)
+            
+            partida = cur.fetchone()
+
+            if(partida == None):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "Não há desafios pendentes de conclusão ou o desafio com o token especificado não existe."
+                Retorno.corResultado = Cores.Erro
+                return Retorno
+            
+            cur.execute(f"""
+                    SELECT ID, id_usuario_desafiado, id_usuario_desafiante FROM historico_partidas 
+                    WHERE 
+                    data_criacao + '3 day'::interval < {dataAtual}
+                    id_usuario_desafiado = {jogador[0]} or
+                    id_usuario_desafiante = {jogador[0]}
+                """)
+            
+            houveDesafioRecente = cur.fetchone()
+
+            idOponente = partida[1] if partida[1] == jogador[0] else partida[2]
+            cur.execute(f"""SELECT id_andar_atual from ranquemaento where id_usuario = {idOponente}""")
+            oponente = cur.fetchone()
+
+            if(oponente[0] > jogador[1] or houveDesafioRecente != None): #Comparando os andares de cada jogador
+                cur.execute(f"""
+                    UPDATE historico_partidas SET
+                    data_finalizacao = '{dataAtual}',
+                    id_estado_partida = {estadoPartidaFinalizada[2].Id}
+                    WHERE token = '{token}'
+                """)
+
+                Retorno.resultado = f"""
+                    ## Desafio de token {token} foi recusado.
+                    """
+                Retorno.corResultado = Cores.Sucesso
+            else:
+                Retorno.resultado = f"""
+                    ## É necessário que o oponente seja de um andar maior para recusar seu desafio ou que você já tenha sido desafiado pelo desafiante dessa partida dentro de 72 horas.
+                    """
+                Retorno.corResultado = Cores.Alerta
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.corResultado = Cores.Erro
+
+        return Retorno
+
     def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado):
         Retorno = DBResultado()
         partida = ''
@@ -182,7 +263,6 @@ class DesafioSql(PostgreSqlConn):
                     WHERE token = '{token}'
                 """)
             
-            # ADICIONAR MÉTODO GERAL PARA ATUALIZAR O RANQUEAMENTO POR CONTA DA MODIFICAÇÃO DA PARTIDA
             resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, False)
             if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
                 cur.close()
@@ -366,19 +446,6 @@ class DesafioSql(PostgreSqlConn):
                         posicaoTomada = jogadores[0][1] - 1
 
                         cur.execute(f"""
-                                SELECT ranqueamento.id, ranqueamento.id_andar_atual FROM ranqueamento
-                                JOIN usuario on usuario.id = ranqueamento.id_usuario 
-                                WHERE usuario.ativo = '1' and 
-                                ranqueamento.id_andar_atual >= {posicaoTomada} and 
-                                ranqueamento.id_andar_atual < 6 and 
-                                ranqueamento.id_temporada = {temporadaAtual.Id} and
-                                ranqueamento.id_usuario != {jogadores[0][0]}
-                                order by ranqueamento.id desc;
-                            """)
-
-                        jogadoresRebaixados = cur.fetchall()
-
-                        cur.execute(f"""
                             UPDATE ranqueamento SET
                                 id_andar_atual = {posicaoTomada},
                                 partidas_para_subir = 2,
@@ -387,14 +454,6 @@ class DesafioSql(PostgreSqlConn):
                                 vitorias_consecutivas = {(jogadores[0][4] + 1)}
                                 WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
                             """)
-
-                        # for jgdRebaixado in jogadoresRebaixados:
-                        #     cur.execute(f"""
-                        #         UPDATE ranqueamento SET
-                        #         id_andar_atual = {jgdRebaixado[1]+1},
-                        #         data_atualizacao = '{dataAtual}'
-                        #         WHERE id = {jgdRebaixado[0]}
-                        #     """)
 
                         vaiTomarPosicaoDoPerdedor = 1 if posicaoTomada == jogadores[1][1] else 0
                         cur.execute(f"""
@@ -407,13 +466,7 @@ class DesafioSql(PostgreSqlConn):
                                 WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                             """) 
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
-                Retorno.corResultado = Cores.Sucesso               
-            # elif(jogadores[0] == None):
-            #     Retorno.resultado = "O desafiante não está registrado no evento ou está inativo."
-            #     Retorno.corResultado = Cores.Alerta
-            # elif(jogadores[1] == None):
-            #     Retorno.resultado = "O desafiado não está registrado no evento ou está inativo."
-            #     Retorno.corResultado = Cores.Alerta
+                Retorno.corResultado = Cores.Sucesso
 
             conn.commit()
             cur.close()

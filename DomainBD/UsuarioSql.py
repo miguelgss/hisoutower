@@ -4,16 +4,18 @@ from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
 from .DataTransferObjects import DBResultado, UsuarioDTO
+from .TabelasDominioSql import TabelasDominioSql
 
 class UsuarioSql(PostgreSqlConn):
     def __init__(self):
         super(UsuarioSql, self).__init__()
         self.Gerador = Gerador()
+        self.tabelasDominioDB = TabelasDominioSql()
 
     def RegisterUser(self, IdDiscord, Nickname, TipoPerfil):
         Retorno = DBResultado()
         resultado = None
-        temporadaAtual = None
+        temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
         menorAndar = None
         idGeradoUsuario = None
         conn = psycopg2.connect(self.connectionString)
@@ -27,8 +29,6 @@ class UsuarioSql(PostgreSqlConn):
                     INSERT INTO usuario(discord_id_user, nome, tipo_perfil, ativo, dados_publicos, data_criacao)
                     VALUES('{IdDiscord}', '{Nickname}', '{TipoPerfil}', '1', '1', '{datetime.now()}');
                 """)
-                cur.execute(f"""SELECT id FROM temporada""")
-                temporadaAtual = cur.fetchone()[0]
                 cur.execute(f"""SELECT id FROM andar order by id desc""")
                 menorAndar = cur.fetchone()[0]
                 cur.execute(f"""SELECT id FROM usuario WHERE discord_id_user = '{IdDiscord}'""")
@@ -59,15 +59,42 @@ class UsuarioSql(PostgreSqlConn):
     def SairOuVoltarDoEvento(self, IdDiscord):
         Retorno = DBResultado()
         pesquisa = None
+        dataAtual = datetime.now()
+        temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
+        numeroAndares = self.tabelasDominioDB.GetNumeroDeAndaresAtual()
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            cur.execute(f"SELECT id, discord_id_user, ativo FROM usuario WHERE discord_id_user = '{IdDiscord}';")
-            # INCLUIR VALIDAÇÃO DE TROCAR RANQUEAMENTO EM RELAÇÃO AO TOP 5
-            # EXEMPLO: SE QUEM SAIR ESTIVER NA POSIÇÃO 4, PUXAR O NA POSIÇÃO 5 PARA ESSA POSIÇÃO
+            cur.execute(f"""
+                SELECT usuario.id, usuario.discord_id_user, usuario.ativo, ranqueamento.id_andar_atual FROM usuario 
+                JOIN ranqueamento on ranqueamento.id_usuario = usuario.id
+                WHERE discord_id_user = '{IdDiscord}';""")
             pesquisa = cur.fetchone()
+
             if(pesquisa != None):
                 if(pesquisa[2] == '1'):
+                    if(pesquisa[3] < 6):
+                        cur.execute(f"""
+                                SELECT ranqueamento.id, ranqueamento.id_andar_atual FROM ranqueamento
+                                JOIN usuario on usuario.id = ranqueamento.id_usuario 
+                                WHERE usuario.ativo = '1' and 
+                                ranqueamento.id_andar_atual > {pesquisa[3]} and 
+                                ranqueamento.id_andar_atual < 6 and 
+                                ranqueamento.id_temporada = {temporadaAtual.Id} 
+                                order by ranqueamento.id desc;
+                            """)
+
+                        jogadoresPromovidos = cur.fetchall()
+
+                        for jgdPromovido in jogadoresPromovidos:
+                            cur.execute(f"""
+                                UPDATE ranqueamento SET
+                                id_andar_atual = {jgdPromovido[1]-1},
+                                data_atualizacao = '{dataAtual}'
+                                WHERE id = {jgdPromovido[0]} and
+                                id_temporada = {temporadaAtual.Id} 
+                            """)
+                    
                     cur.execute(f"""
                         UPDATE 
                             usuario set ativo = '0' 
@@ -75,11 +102,14 @@ class UsuarioSql(PostgreSqlConn):
 
                         UPDATE
                             ranqueamento set
-                                id_andar_atual = 2,
+                                id_andar_atual = {numeroAndares},
                                 partidas_para_subir = 2,
                                 partidas_para_descer = 2,
-                            WHERE id_usuario = {pesquisa[0]}
-                    """)
+                                vitorias_consecutivas = 0
+                            WHERE id_usuario = {pesquisa[0]} and
+                            id_temporada = {temporadaAtual.Id} 
+                        """)
+
                     Retorno.resultado = "Saiu com sucesso."
                 if(pesquisa[2] == '0'):
                     cur.execute(f"""
@@ -193,6 +223,8 @@ class UsuarioSql(PostgreSqlConn):
             jogador = cur.fetchone()
             
             if(jogador == None):
+                cur.close()
+                conn.close()
                 Retorno.resultado = Mensagens.UsuarioNaoEncontrado
                 Retorno.corResultado = Cores.Erro
                 return Retorno
@@ -229,6 +261,49 @@ class UsuarioSql(PostgreSqlConn):
             return Retorno
 
         except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    def GetPartidasUsuario(self, IdDiscord):
+        Retorno = DBResultado()
+        historicoPartidas = []
+        textoResultado = ''
+        try:
+            conn = psycopg2.connect(self.connectionString)
+            cur = conn.cursor()
+
+            cur.execute(f"""          
+                SELECT 
+                    u.nome as desafiante, u2.nome as desafiado, 
+                    hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                    hp.data_criacao  
+                    FROM historico_partidas hp 
+                    JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                    JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                    JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                    WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
+                    ORDER BY hp.id DESC
+                """)
+
+            historicoPartidas = cur.fetchall()
+
+            for partida in historicoPartidas:
+                vitoriasDesafiante = partida[2] if partida[2] != None else "-"
+                vitoriasDesafiado = partida[3] if partida[3] != None else "-"
+                dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
+
+                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {dataCriacaoFormatada} \n'
+
+            Retorno.resultado = textoResultado
+            Retorno.corResultado = Cores.Sucesso
+            cur.close()
+            conn.close()
+        except Exception as e:
+            cur.close()
+            conn.close()
             Retorno.resultado += "Ocorreu um erro: \n" + str(e)
             Retorno.corResultado = Cores.Erro
         return Retorno

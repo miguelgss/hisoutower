@@ -125,6 +125,18 @@ def run_discord_bot():
         )
 
     @bot.command(
+        brief=f'Lista as partidas do usuário.', 
+        description='Lista as partidas do usuário.',
+        aliases = ['hp','historico', 'historicopartidas'])
+    async def HistoricoPartidas(ctx):
+        resultado = usuariosDB.GetPartidasUsuario(ctx.author.id)
+        await ctx.send(
+            embed = discord.Embed(title=f"Histórico de partidas:",
+            description=f'''{resultado.resultado}''',
+            color=resultado.corResultado)
+        )
+        
+    @bot.command(
         brief=f'Retorna ou remove o usuário do evento.', 
         description='O usuário irá retornar para o evento caso esteja previamente desativado ou irá sair caso esteja participando. **Quando sair, seu ranqueamento será reiniciado para o menor possível.**',
         aliases = ['sve','sairvoltar', 'sair', 'voltar']
@@ -139,7 +151,7 @@ def run_discord_bot():
             await ctx.send("Usuário não encontrado.")
             return
         if(usuario.Ativo == '1'):
-            await ctx.send('Você está prestes a sair do evento, **o que fará com que você perca seu posicionamento no ranqueamento.** Se tiver certeza disso, digite "sim" ou "s".')
+            await ctx.send('Você está prestes a sair do evento, **O QUE FARÁ COM QUE VOCÊ PERCA SUA POSIÇÃO NO RANQUEAMENTO!** Se tiver certeza disso, digite "sim" ou "s".')
         else:
             await ctx.send('Bem vindo de volta ao evento! Para confirmar seu retorno, digite "sim" ou "s".')
         try:
@@ -172,6 +184,22 @@ def run_discord_bot():
                 description=f'''{resultado.resultado}''',
                 color=resultado.corResultado)
             )
+
+    @bot.command(
+        brief=f'Recusa a partida informada por token.', 
+        description='Recusa a partida especificada pelo token. Só é possível recusar desafios de membros em andares superiores ou que já tenham jogado com o desafiador nas últimas 72h.',
+        aliases = ['rd','recusar']
+    )
+    async def Recusar(ctx, 
+        token: str = commands.parameter(description="Token identificador da partida a ser recusada.")):
+        resultado = desafiosDB.RecusarDesafio(token, ctx.author.id)
+        await ctx.send(
+            embed = discord.Embed(title="Resultado da recusa:",
+            description=f'''{resultado.resultado}''',
+            color=resultado.corResultado)
+        )
+
+
     ### - COMANDOS COM PERMISSIONAMENTO (ORGANIZADORES)
     @bot.command(
         brief=f'Muda o usuário entre {Mensagens.U_JOGADOR} e {Mensagens.U_ORGANIZADOR}', 
