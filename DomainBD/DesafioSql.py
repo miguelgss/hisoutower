@@ -1,4 +1,5 @@
 import psycopg2
+import traceback
 from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
@@ -18,7 +19,7 @@ class DesafioSql(PostgreSqlConn):
         dataAtual = datetime.now()
         dataExpiracao = dataAtual + timedelta(days=3)
         tokenPartida = ""
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO, Mensagens.EP_CONCLUIDO, Mensagens.EP_RECUSADO])
+        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
@@ -74,7 +75,7 @@ class DesafioSql(PostgreSqlConn):
                     SELECT ID FROM historico_partidas 
                     where (id_usuario_desafiante = '{jogadores[0][0]}' or
                     (id_usuario_desafiante = '{jogadores[1][0]}' and id_usuario_desafiado = '{jogadores[0][0]}')) and
-                    (id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id})
+                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
                     """)
                 desafianteJaPossuiPartida = cur.fetchone()
                 if(desafianteJaPossuiPartida != None):
@@ -87,7 +88,7 @@ class DesafioSql(PostgreSqlConn):
                     SELECT ID FROM historico_partidas 
                     where (id_usuario_desafiado = '{jogadores[1][0]}' or
                     (id_usuario_desafiante = '{jogadores[0][0]}' and id_usuario_desafiado = '{jogadores[1][0]}')) and
-                    (id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id})
+                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
                     """)
 
                 desafiadoJaPossuiPartida = cur.fetchone()
@@ -134,14 +135,14 @@ class DesafioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
     
     def RecusarDesafio(self, token, IdDiscordAnulador):
         Retorno = DBResultado()
         dataAtual = datetime.now()
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO, Mensagens.EP_CONCLUIDO, Mensagens.EP_RECUSADO])
+        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
         idEstadoPartida = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
@@ -214,7 +215,7 @@ class DesafioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
 
         return Retorno
@@ -223,7 +224,7 @@ class DesafioSql(PostgreSqlConn):
         Retorno = DBResultado()
         partida = ''
         dataAtual = datetime.now()
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO, Mensagens.EP_CONCLUIDO, Mensagens.EP_RECUSADO])
+        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
         estadoPartidaConcluida = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CONCLUIDO])
         idEstadoPartidasFinalizadas = [o.Id for o in estadoPartidaFinalizada]
         VitoriosoId = 0
@@ -237,8 +238,9 @@ class DesafioSql(PostgreSqlConn):
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
             cur.execute(f"""     
-                select id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida
+                select hp.id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, ep.nome
                 from historico_partidas hp
+                join estado_partida ep on id = hp.id_estado_partida
                 where hp.token = '{token}'
                 """)
             partida = cur.fetchone()
@@ -246,7 +248,7 @@ class DesafioSql(PostgreSqlConn):
             if(partida[3] in idEstadoPartidasFinalizadas):
                 cur.close()
                 conn.close()
-                Retorno.resultado += "Essa partida já foi concluída ou cancelada, não é possível mudar o seu estado ou resultado."
+                Retorno.resultado += f"Essa partida possui o estado de {partida[4]}, não é possível mudar o seu resultado." if partida[3] != Mensagens.EP_CANCELADO else f"Essa partida foi cancelada por expiração. Favor relatar seu resultado pelo comando de ConcluirPartidaExpirada."
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
 
@@ -292,7 +294,7 @@ class DesafioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
 
@@ -334,7 +336,10 @@ class DesafioSql(PostgreSqlConn):
                 """)
             jogadoresTop = cur.fetchall()
             
-            if(jogadores[0] != None and jogadores[1] != None and not foiEmpate):
+            if(foiEmpate):
+                Retorno.resultado = "Tudo certo com a atualização de resultados!"
+                Retorno.corResultado = Cores.Sucesso
+            elif(jogadores[0] != None and jogadores[1] != None):
                 if(jogadores[0][1] > 5): # Se o andar do jogador vitorioso for da torre...
                     if(jogadores[0][1] >= jogadores[1][1] and jogadores[1][1] > 6): # Comparando os andares
                         if(jogadores[0][2] < 2):
@@ -374,7 +379,7 @@ class DesafioSql(PostgreSqlConn):
                                     partidas_para_subir = 2,
                                     partidas_para_descer = 1,
                                     data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = 0,
+                                    vitorias_consecutivas = 0
                                     WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                                 """)
 
@@ -477,6 +482,104 @@ class DesafioSql(PostgreSqlConn):
             conn.rollback()
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+    
+    def ConcluirPartidaExpirada(self, token, vitoriasDesafiante, vitoriasDesafiado):
+        Retorno = DBResultado()
+        partida = ''
+        dataAtual = datetime.now()
+        estadoPartidaCancelada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO])
+        estadoPartidaEmpate = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_EMPATE])
+        estadoPartidaVitoriaAusencia = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_JOGADOR_AUSENTE])
+        VitoriosoId = 0
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            Empate = vitoriasDesafiante == 0 and vitoriasDesafiado == 0
+
+            if(not Empate and (vitoriasDesafiante != 4 and vitoriasDesafiado != 4 or 
+                (vitoriasDesafiante > 4 or vitoriasDesafiado > 4) or 
+                (vitoriasDesafiante == 4 and vitoriasDesafiado == 4))):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "As partidas são FT4! Apenas um deve deve ter 4 vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+            cur.execute(f"""     
+                select hp.id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, ep.nome
+                from historico_partidas hp
+                join estado_partida ep on ep.id = hp.id_estado_partida
+                where hp.token = '{token}' and id_estado_partida = {estadoPartidaCancelada[0].Id}
+                """)
+            partida = cur.fetchone()
+
+            if(partida == None):
+                cur.close()
+                conn.close()
+                Retorno.resultado += "A partida não foi encontrada."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+
+            VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
+            DerrotadoId = partida[1] if vitoriasDesafiante < vitoriasDesafiado else partida[2]
+            
+            if(Empate):
+                cur.execute(f"""
+                        UPDATE 
+                            historico_partidas set id_estado_partida = {estadoPartidaEmpate[0].Id}, 
+                            usuario_desafiante_vitorias = {vitoriasDesafiante}, 
+                            usuario_desafiado_vitorias = {vitoriasDesafiado}, 
+                            data_finalizacao = '{dataAtual}'
+                        WHERE token = '{token}'
+                    """)
+            else:
+                cur.execute(f"""
+                        UPDATE 
+                            historico_partidas set id_estado_partida = {estadoPartidaVitoriaAusencia[0].Id}, 
+                            usuario_desafiante_vitorias = {vitoriasDesafiante}, 
+                            usuario_desafiado_vitorias = {vitoriasDesafiado}, 
+                            id_usuario_vencedor = {VitoriosoId},
+                            data_finalizacao = '{dataAtual}'
+                        WHERE token = '{token}'
+                    """)
+            
+            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, Empate)
+            if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
+                cur.close()
+                conn.close()
+                Retorno.resultado += resultado.resultado
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+            
+            usuarios = []
+            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[1]}")
+            usuarios.append(cur.fetchone())
+            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[2]}")
+            usuarios.append(cur.fetchone())
+
+            vitoriosoNome = usuarios[0][1] if usuarios[0][0] == VitoriosoId else usuarios[1][1]
+            ausenteNome = usuarios[0][1] if usuarios[0][0] != VitoriosoId else usuarios[1][1]
+            if(Empate):
+                Retorno.resultado = f"""
+                    ## <@{usuarios[0][1]}> [{vitoriasDesafiante}] VS [{vitoriasDesafiado}] <@{usuarios[1][1]}> 
+                    ### PARTIDA CONCLUÍDA COMO EMPATE.
+                    """
+            else:
+                Retorno.resultado = f"""
+                    ## <@{usuarios[0][1]}> [{vitoriasDesafiante}] VS [{vitoriasDesafiado}] <@{usuarios[1][1]}> 
+                    ### PARTIDA CONCLUÍDA POR CONTA DA AUSÊNCIA DE <@{ausenteNome}>. PARABÉNS <@{vitoriosoNome}>
+                    """ 
+            
+            Retorno.corResultado = Cores.Sucesso
+            conn.commit()
+            cur.close()
+            conn.close()
+            Retorno.corResultado = Cores.Sucesso
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno

@@ -1,5 +1,6 @@
 from .PostgreSqlConn import PostgreSqlConn
 import psycopg2
+import traceback
 from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
@@ -36,7 +37,7 @@ class UsuarioSql(PostgreSqlConn):
 
                 cur.execute(f"""
                     INSERT INTO ranqueamento(id_usuario,id_temporada, id_andar_atual, data_criacao, data_atualizacao, partidas_para_subir, partidas_para_descer, vitorias_consecutivas)
-                    VALUES ({idGeradoUsuario}, {temporadaAtual}, {menorAndar}, '{datetime.now()}', '{datetime.now()}', 2, 2, 0)
+                    VALUES ({idGeradoUsuario}, {temporadaAtual.Id}, {menorAndar}, '{datetime.now()}', '{datetime.now()}', 2, 2, 0)
                 """)
 
                 Retorno.resultado = f"{Nickname} foi registrado como {TipoPerfil}!"
@@ -51,7 +52,7 @@ class UsuarioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
             
         return Retorno
@@ -125,7 +126,7 @@ class UsuarioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
 
         return Retorno
@@ -163,7 +164,7 @@ class UsuarioSql(PostgreSqlConn):
             
             Retorno.corResultado = Cores.Sucesso
         except Exception as e:
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
 
@@ -202,7 +203,7 @@ class UsuarioSql(PostgreSqlConn):
             conn.rollback()
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
 
@@ -263,7 +264,7 @@ class UsuarioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
 
@@ -279,13 +280,14 @@ class UsuarioSql(PostgreSqlConn):
                 SELECT 
                     u.nome as desafiante, u2.nome as desafiado, 
                     hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                    hp.data_criacao  
+                    hp.data_criacao, hp.token
                     FROM historico_partidas hp 
                     JOIN usuario u on hp.id_usuario_desafiante = u.id 
                     JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
                     JOIN estado_partida ep on hp.id_estado_partida = ep.id 
                     WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
                     ORDER BY hp.id DESC
+                    LIMIT 30
                 """)
 
             historicoPartidas = cur.fetchall()
@@ -295,7 +297,7 @@ class UsuarioSql(PostgreSqlConn):
                 vitoriasDesafiado = partida[3] if partida[3] != None else "-"
                 dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
 
-                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {dataCriacaoFormatada} \n'
+                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {partida[7]} | {dataCriacaoFormatada} \n'
 
             Retorno.resultado = textoResultado
             Retorno.corResultado = Cores.Sucesso
@@ -304,7 +306,45 @@ class UsuarioSql(PostgreSqlConn):
         except Exception as e:
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    def GetPartidas(self):
+        Retorno = DBResultado()
+        historicoPartidas = []
+        textoResultado = ''
+        try:
+            conn = psycopg2.connect(self.connectionString)
+            cur = conn.cursor()
+
+            cur.execute(f"""          
+                SELECT 
+                    u.nome as desafiante, u2.nome as desafiado, 
+                    hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                    hp.data_criacao, hp.token
+                    FROM historico_partidas hp 
+                    ORDER BY hp.id DESC
+                    LIMIT 30
+                """)
+
+            historicoPartidas = cur.fetchall()
+
+            for partida in historicoPartidas:
+                vitoriasDesafiante = partida[2] if partida[2] != None else "-"
+                vitoriasDesafiado = partida[3] if partida[3] != None else "-"
+                dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
+
+                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {partida[7]} | {dataCriacaoFormatada} \n'
+
+            Retorno.resultado = textoResultado
+            Retorno.corResultado = Cores.Sucesso
+            cur.close()
+            conn.close()
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno
 

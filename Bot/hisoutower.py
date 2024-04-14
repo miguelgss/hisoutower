@@ -66,16 +66,15 @@ def run_discord_bot():
             color=search.corResultado)
         )
     
-    @bot.command()
-    async def testeimg(ctx, user:discord.Member):
-        img = await Gerador.GerarCardDesafio(ctx.author, user)
-        try:
-            file = discord.File(img, filename="profile.png")
-            await ctx.send("...", file=file)
-        except Exception as e:
-            await ctx.send(str(e))
-        img.close()
-        
+    # @bot.command()
+    # async def testeimg(ctx, user:discord.Member):
+    #     img = await Gerador.GerarCardDesafio(ctx.author, user)
+    #     try:
+    #         file = discord.File(img, filename="profile.png")
+    #         await ctx.send("...", file=file)
+    #     except Exception as e:
+    #         await ctx.send(str(e))
+    #     img.close()
 
     @bot.command(
         brief=f'Se adiciona como {Mensagens.U_JOGADOR}', 
@@ -125,11 +124,23 @@ def run_discord_bot():
         )
 
     @bot.command(
-        brief=f'Lista as partidas do usuário.', 
-        description='Lista as partidas do usuário.',
-        aliases = ['hp','historico', 'historicopartidas'])
-    async def HistoricoPartidas(ctx):
+        brief=f'Lista as 30 partidas mais recentes. do usuário.', 
+        description='Lista as 30 partidas mais recentes. do usuário.',
+        aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
+    async def HistoricoMinhasPartidas(ctx):
         resultado = usuariosDB.GetPartidasUsuario(ctx.author.id)
+        await ctx.send(
+            embed = discord.Embed(title=f"Histórico de partidas:",
+            description=f'''{resultado.resultado}''',
+            color=resultado.corResultado)
+        )
+
+    @bot.command(
+        brief=f'Lista as 30 partidas mais recentes.', 
+        description='Lista as 30 partidas mais recentes do sistema.',
+        aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
+    async def HistoricoPartidas(ctx):
+        resultado = usuariosDB.GetPartidas(ctx.author.id)
         await ctx.send(
             embed = discord.Embed(title=f"Histórico de partidas:",
             description=f'''{resultado.resultado}''',
@@ -223,7 +234,7 @@ def run_discord_bot():
 
     @bot.command(
         brief=f'Relata o resultado de uma partida.', 
-        description='O resultado da partida será atualizado utilizando esse comando. **É NECESSÁRIO INFORMAR O TOKEN DA PARTIDA.**',
+        description='O resultado da partida será atualizado utilizando esse comando. **É NECESSÁRIO INFORMAR, EM ORDEM: TOKEN DA PARTIDA; VITORIAS DESAFIANTE; VITORIAS DESAFIADO.**',
         aliases = ['rrp','rp', 'relatar', 'resultado', 'relatarResultado']
     )
     async def RelatarResultadoPartida(ctx, 
@@ -247,7 +258,31 @@ def run_discord_bot():
             color=resultado.corResultado)
             )
         
-
+    @bot.command(
+        brief=f'Conclui uma partida que foi cancelada por expiração.', 
+        description='Permite finalizar uma partida que foi cancelada por expiração. Caso a vitória e derrota sejam zero, será considerado empate. Caso a vitória de algum jogador seja informada, o posicionamento dos jogadores será atualizado de acordo. **É NECESSÁRIO INFORMAR, EM ORDEM: TOKEN DA PARTIDA; VITORIAS DESAFIANTE; VITORIAS DESAFIADO.**',
+        aliases = ['cpe','concluir', 'concluirExpirada', 'concluirPartidaExpirada']
+    )
+    async def ConcluirPartidaExpirada(ctx, 
+        token: str = commands.parameter(description="Token identificador da partida a ser atualizada."), 
+        vitoriasDesafiante: int = commands.parameter(description="Vítorias do desafiante.",), 
+        vitoriasDesafiado: int = commands.parameter(description="Vitórias do desafiado.")):
+        usuario = None
+        usuario = usuariosDB.GetUsuario(ctx.author.id)
+        if(usuario.TipoPerfil != Mensagens.U_ORGANIZADOR):
+            await ctx.send(
+            embed = discord.Embed(title=f"SEM PERMISSÃO!",
+            description="É necessário ser um ORGANIZADOR para utilizar este comando.",
+            color=Cores.Alerta)
+            )
+            return
+        else:
+            resultado = desafiosDB.ConcluirPartidaExpirada(token, vitoriasDesafiante, vitoriasDesafiado)
+            await ctx.send(
+            embed = discord.Embed(title=f"Resultado:",
+            description=resultado.resultado,
+            color=resultado.corResultado)
+            )
     ###--- HANDLER DE ERROS 
     @bot.event
     async def on_command_error(ctx, error):
