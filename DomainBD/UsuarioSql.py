@@ -324,6 +324,9 @@ class UsuarioSql(PostgreSqlConn):
                     hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
                     hp.data_criacao, hp.token
                     FROM historico_partidas hp 
+                    JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                    JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                    JOIN estado_partida ep on hp.id_estado_partida = ep.id 
                     ORDER BY hp.id DESC
                     LIMIT 30
                 """)

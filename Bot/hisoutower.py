@@ -138,9 +138,9 @@ def run_discord_bot():
     @bot.command(
         brief=f'Lista as 30 partidas mais recentes.', 
         description='Lista as 30 partidas mais recentes do sistema.',
-        aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
+        aliases = ['hp', 'historicopartidas', 'historico'])
     async def HistoricoPartidas(ctx):
-        resultado = usuariosDB.GetPartidas(ctx.author.id)
+        resultado = usuariosDB.GetPartidas()
         await ctx.send(
             embed = discord.Embed(title=f"Histórico de partidas:",
             description=f'''{resultado.resultado}''',
