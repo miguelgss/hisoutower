@@ -12,7 +12,7 @@ class DesafioSql(PostgreSqlConn):
         super(DesafioSql, self).__init__()
         self.tabelasDominioDB = TabelasDominioSql()
 
-    def Desafiar(self, IdDiscordDesafiante, IdDiscordDesafiado):
+    async def Desafiar(self, DesafianteUser, DesafiadoUser):
         Retorno = DBResultado()
         jogadores = []
         jogadoresTop = []
@@ -21,6 +21,8 @@ class DesafioSql(PostgreSqlConn):
         tokenPartida = ""
         estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
+        IdDiscordDesafiante = DesafianteUser.id
+        IdDiscordDesafiado = DesafiadoUser.id
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
@@ -119,6 +121,9 @@ class DesafioSql(PostgreSqlConn):
                     ### DESAFIO REGISTRADO PARA ATÉ {dataExpiracao.day}/{dataExpiracao.month}/{dataExpiracao.year}
                     ### TOKEN IDENTIFICADOR DA PARTIDA: 
                     ### ```{tokenPartida}``` """
+
+                imgDesafio = await self.GerarImagemDesafio(DesafianteUser, DesafiadoUser)
+                Retorno.arquivo = imgDesafio.arquivo
                 Retorno.corResultado = Cores.Sucesso
                 
             elif(jogadores[0] == None):
@@ -212,6 +217,35 @@ class DesafioSql(PostgreSqlConn):
             conn.commit()
             cur.close()
             conn.close()
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+
+        return Retorno
+
+    async def GerarImagemDesafio(self, DiscordDesafiante, DiscordDesafiado):
+        Retorno = DBResultado()        
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            cardDesafiante = await self.ObterPerfil(DiscordDesafiante, '')
+            cardDesafiado = await self.ObterPerfil(DiscordDesafiado, '')
+            cur.execute(f"""
+                        SELECT usuario.tipo_ficha
+                        FROM usuario
+                        WHERE usuario.discord_id_user = '{DiscordDesafiante.id}' 
+                        """)
+            desafianteChar = cur.fetchone()[0]
+            cur.execute(f"""
+                        SELECT usuario.tipo_ficha
+                        FROM usuario
+                        WHERE usuario.discord_id_user = '{DiscordDesafiado.id}' 
+                        """)
+            desafiadoChar = cur.fetchone()[0]
+            Retorno.arquivo = await Gerador.GerarCardDesafio(cardDesafiante.arquivo, desafianteChar, cardDesafiado.arquivo, desafiadoChar)
+            Retorno.corResultado = Cores.Sucesso
         except Exception as e:
             cur.close()
             conn.close()

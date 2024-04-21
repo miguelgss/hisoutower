@@ -3,6 +3,7 @@ import discord
 import re
 import json
 import asyncio
+import traceback
 from datetime import datetime
 from discord.ext import commands, tasks
 
@@ -52,7 +53,6 @@ def run_discord_bot():
         except Exception as e:
             print(e)
         
-
     @bot.command(
         brief='Teste conexão BD', 
         description='Comando para testar a conexão com o banco de dados',
@@ -66,15 +66,16 @@ def run_discord_bot():
             color=search.corResultado)
         )
     
-    # @bot.command()
-    # async def testeimg(ctx, user:discord.Member):
-    #     img = await Gerador.GerarCardDesafio(ctx.author, user)
-    #     try:
-    #         file = discord.File(img, filename="profile.png")
-    #         await ctx.send("...", file=file)
-    #     except Exception as e:
-    #         await ctx.send(str(e))
-    #     img.close()
+    @bot.command()
+    async def testeimg(ctx, 
+        user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):  
+        retorno = await desafiosDB.GerarImagemDesafio(ctx.author, user)
+        try:
+            file = discord.File(retorno.arquivo, filename="profile.png")
+            await ctx.send("...", file=file)
+        except Exception as e:
+            await ctx.send(str(e))
+        retorno.arquivo.close()
 
     @bot.command(
         brief=f'Se adiciona como {Mensagens.U_JOGADOR}', 
@@ -96,7 +97,7 @@ def run_discord_bot():
             tipoFicha:str = commands.parameter(default='', description=f"Permite escolher entre as seguintes personagens: {Mensagens.LISTA_FICHA_PERSONAGENS}.")
         ):
         resultado = await usuariosDB.ObterPerfil(ctx.message.author, tipoFicha)
-        if(type(resultado.resultado) == str):
+        if(resultado.arquivo == None):
             await ctx.send(
                 embed = discord.Embed(title=f"Ocorreu algum imprevisto...",
                 description=resultado.resultado,
@@ -104,7 +105,7 @@ def run_discord_bot():
             )
         else:
             try:
-                file = discord.File(resultado.resultado, filename=f"ficha_{ctx.message.author.display_name}.png")
+                file = discord.File(resultado.arquivo, filename=f"ficha_{ctx.message.author.display_name}.png")
                 await ctx.send("", file=file)
             except Exception as e:
                 await ctx.send(str(e))
@@ -124,8 +125,8 @@ def run_discord_bot():
         )
 
     @bot.command(
-        brief=f'Lista as 30 partidas mais recentes. do usuário.', 
-        description='Lista as 30 partidas mais recentes. do usuário.',
+        brief=f'Lista as 30 partidas mais recentes do usuário.', 
+        description='Lista as 30 partidas mais recentes do usuário.',
         aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
     async def HistoricoMinhasPartidas(ctx):
         resultado = usuariosDB.GetPartidasUsuario(ctx.author.id)
@@ -186,9 +187,13 @@ def run_discord_bot():
     )
     async def Desafiar(ctx, 
         user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):
-        resultado = desafiosDB.Desafiar(ctx.author.id, user.id)
+        resultado = await desafiosDB.Desafiar(ctx.author, user)
         if(resultado.corResultado == Cores.Sucesso):
-            await ctx.send(resultado.resultado)
+            file = discord.File(resultado.arquivo, filename="profile.png")
+            await ctx.send(
+                resultado.resultado,
+                file=file
+            )
         else:
             await ctx.send(
                 embed = discord.Embed(title=f"Ocorreu algum erro no desafio...",
@@ -307,7 +312,7 @@ def run_discord_bot():
         else:
             await ctx.send(
                 embed=discord.Embed(title="🚫 Erro:",
-                description=f'De: {ctx.message.author.name}; Comando: {ctx.message.content}; \n\n' + str(error),
+                description=f'De: {ctx.message.author.name}; Comando: {ctx.message.content}; \n\n' + "Erro:" + str(error) + "\n\n" + str(traceback.format_exc()),
                 color=Cores.Erro)
             )
         print(str(error)) 

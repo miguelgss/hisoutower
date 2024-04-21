@@ -207,67 +207,6 @@ class UsuarioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
 
-    async def ObterPerfil(self, discordUser, tipoFicha:str):
-        Retorno = DBResultado()
-        tipoFicha = tipoFicha.lower()
-        try:
-            conn = psycopg2.connect(self.connectionString)
-            cur = conn.cursor()
-
-            cur.execute(f"""
-                    SELECT a.id, r.partidas_para_subir, r.partidas_para_descer, usuario.tipo_ficha
-                    FROM usuario
-                    JOIN ranqueamento r on id_usuario = usuario.id  
-                    JOIN andar a on a.id = r.id_andar_atual 
-                    WHERE usuario.discord_id_user = '{discordUser.id}' 
-                    """)
-            jogador = cur.fetchone()
-            
-            if(jogador == None):
-                cur.close()
-                conn.close()
-                Retorno.resultado = Mensagens.UsuarioNaoEncontrado
-                Retorno.corResultado = Cores.Erro
-                return Retorno
-
-            andarAtual = Mensagens.LISTA_ICONES_ANDARES[jogador[0] - 1]
-            if(tipoFicha in Mensagens.LISTA_FICHA_PERSONAGENS):
-                if(tipoFicha != jogador[3]):
-                    cur.execute(f"""
-                        UPDATE usuario SET
-                            tipo_ficha = '{tipoFicha}'
-                            WHERE discord_id_user = '{discordUser.id}';
-                        """)
-
-                    cur.execute(f"""
-                        SELECT a.id, r.partidas_para_subir, r.partidas_para_descer, usuario.tipo_ficha
-                        FROM usuario
-                        JOIN ranqueamento r on id_usuario = usuario.id  
-                        JOIN andar a on a.id = r.id_andar_atual 
-                        WHERE usuario.discord_id_user = '{discordUser.id}' 
-                        """)
-                    jogador = cur.fetchone()
-                    conn.commit()
-                Retorno.resultado = await Gerador.GerarCardPerfil(discordUser, jogador[3], andarAtual, jogador[1] < 2, jogador[2] < 2)            
-                Retorno.corResultado = Cores.Sucesso
-            elif(tipoFicha == ''):
-                Retorno.resultado = await Gerador.GerarCardPerfil(discordUser, jogador[3], andarAtual, jogador[1] < 2, jogador[2] < 2)            
-                Retorno.corResultado = Cores.Sucesso
-            else:
-                Retorno.resultado = f"Não foi possível achar o tipo de ficha informado. Tente algum dos seguintes nomes: {Mensagens.LISTA_FICHA_PERSONAGENS}"
-                Retorno.corResultado = Cores.Alerta
-            
-            cur.close()
-            conn.close()
-            return Retorno
-
-        except Exception as e:
-            cur.close()
-            conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
-            Retorno.corResultado = Cores.Erro
-        return Retorno
-
     def GetPartidasUsuario(self, IdDiscord):
         Retorno = DBResultado()
         historicoPartidas = []

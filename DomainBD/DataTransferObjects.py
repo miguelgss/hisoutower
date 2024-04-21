@@ -1,5 +1,6 @@
 class DBResultado():
     resultado = ""
+    arquivo = None
     corResultado = None
 
 class UsuarioDTO():
