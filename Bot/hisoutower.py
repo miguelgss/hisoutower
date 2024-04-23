@@ -65,22 +65,21 @@ def run_discord_bot():
             description=search.resultado,
             color=search.corResultado)
         )
-    
-    @bot.command()
-    async def testeimg(ctx, 
-        user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):  
-        retorno = await desafiosDB.GerarImagemDesafio(ctx.author, user)
-        try:
-            file = discord.File(retorno.arquivo, filename="profile.png")
-            await ctx.send("...", file=file)
-        except Exception as e:
-            await ctx.send(str(e))
-        retorno.arquivo.close()
+    # @bot.command()
+    # async def testeimg(ctx, 
+    #     user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):  
+    #     retorno = await desafiosDB.GerarImagemDesafio(ctx.author, user)
+    #     try:
+    #         file = discord.File(retorno.arquivo, filename="profile.png")
+    #         await ctx.send("...", file=file)
+    #     except Exception as e:
+    #         await ctx.send(str(e))
+    #     retorno.arquivo.close()
 
     @bot.command(
         brief=f'Se adiciona como {Mensagens.U_JOGADOR}', 
         description=f'Se adiciona ao hisoutower como {Mensagens.U_JOGADOR}, permitindo desafiar outros jogadores e participar do ranqueamento.',
-        aliases = ['addme','am','adicioneme'])
+        aliases = ['addme','am','adicioneme','meadicionar', 'meadiciona'])
     async def MeAdicionar(ctx):
         resultado = usuariosDB.RegisterUser(ctx.message.author.id, ctx.message.author.name, Mensagens.U_JOGADOR)
         await ctx.send(
@@ -115,7 +114,7 @@ def run_discord_bot():
         description='Lista os jogadores registrados, incluindo se estão ativos e se permitem acesso ao seu histórico de partidas. Caso um nome seja informado, a pesquisa será filtrada.',
         aliases = ['lj','ljogador', 'ljogadores'])
     async def ListarJogadores(ctx, 
-        nome:str = commands.parameter(default=None, description="Parâmetro que filtrará a resultado.")
+        nome:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
         ):
         resultado = usuariosDB.ListarUsuarios(nome)
         await ctx.send(
@@ -128,10 +127,13 @@ def run_discord_bot():
         brief=f'Lista as 30 partidas mais recentes do usuário.', 
         description='Lista as 30 partidas mais recentes do usuário.',
         aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
-    async def HistoricoMinhasPartidas(ctx):
-        resultado = usuariosDB.GetPartidasUsuario(ctx.author.id)
+    async def HistoricoMinhasPartidas(
+        ctx,
+        token:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
+        ):
+        resultado = usuariosDB.GetPartidasUsuario(ctx.author.id, token)
         await ctx.send(
-            embed = discord.Embed(title=f"Histórico de partidas:",
+            embed = discord.Embed(title=f"Meu histórico de partidas:",
             description=f'''{resultado.resultado}''',
             color=resultado.corResultado)
         )
@@ -140,8 +142,11 @@ def run_discord_bot():
         brief=f'Lista as 30 partidas mais recentes.', 
         description='Lista as 30 partidas mais recentes do sistema.',
         aliases = ['hp', 'historicopartidas', 'historico'])
-    async def HistoricoPartidas(ctx):
-        resultado = usuariosDB.GetPartidas()
+    async def HistoricoPartidas(
+        ctx,
+        token:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
+        ):
+        resultado = usuariosDB.GetPartidas(token)
         await ctx.send(
             embed = discord.Embed(title=f"Histórico de partidas:",
             description=f'''{resultado.resultado}''',
@@ -173,11 +178,18 @@ def run_discord_bot():
             return
         if(msg.content.lower() in ("sim", "s")):
             resultado = usuariosDB.SairOuVoltarDoEvento(ctx.author.id)
-            await ctx.send(
-                embed = discord.Embed(title=f"Saída/Retorno:",
-                description=f'''```{resultado.resultado}```''',
-                color=resultado.corResultado)
-            )
+            if(resultado.corResultado == Cores.Sucesso):
+                await ctx.send(
+                    embed = discord.Embed(title=f"Saída/Retorno:",
+                    description=f'''```{resultado.resultado}```''',
+                    color=resultado.corResultado)
+                )
+            else:
+                await ctx.send(
+                    embed = discord.Embed(title=f"Saída/Retorno:",
+                    description=f'''{resultado.resultado}''',
+                    color=resultado.corResultado)
+                )
 
     ### - DESAFIOS
     @bot.command(
@@ -214,7 +226,6 @@ def run_discord_bot():
             description=f'''{resultado.resultado}''',
             color=resultado.corResultado)
         )
-
 
     ### - COMANDOS COM PERMISSIONAMENTO (ORGANIZADORES)
     @bot.command(
@@ -288,6 +299,7 @@ def run_discord_bot():
             description=resultado.resultado,
             color=resultado.corResultado)
             )
+
     ###--- HANDLER DE ERROS 
     @bot.event
     async def on_command_error(ctx, error):

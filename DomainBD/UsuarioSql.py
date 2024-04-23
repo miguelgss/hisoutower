@@ -74,6 +74,20 @@ class UsuarioSql(PostgreSqlConn):
 
             if(pesquisa != None):
                 if(pesquisa[2] == '1'):
+                    cur.execute(f"""
+                            SELECT id from historico_partidas where id_usuario_desafiante = {pesquisa[0]} or id_usuario_desafiado = {pesquisa[0]}
+                            and id_estado_partida = 1
+                        """)
+                    possuiPartidaPendente = cur.fetchone()
+
+                    if(possuiPartidaPendente != None):
+                        Retorno.corResultado = Cores.Alerta
+                        Retorno.resultado =  f"""
+                            ⚠️⚠️⚠️⚠️ <@{IdDiscord}> \n ## AINDA HÁ DESAFIOS PENDENTES DE CONCLUSÃO! NÃO DA PRA SAIR! \n ⚠️⚠️⚠️⚠️
+                            """
+                        cur.close()
+                        conn.close()    
+                        return Retorno
                     if(pesquisa[3] < 6):
                         cur.execute(f"""
                                 SELECT ranqueamento.id, ranqueamento.id_andar_atual FROM ranqueamento
@@ -139,14 +153,14 @@ class UsuarioSql(PostgreSqlConn):
 
             if not nome or nome.isspace():
                 cur.execute(f"""
-                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.nome, r.partidas_para_subir
+                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.id, r.partidas_para_subir
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
                     JOIN andar a on a.id = r.id_andar_atual  
                     """)
             else:
                 cur.execute(f"""
-                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.nome, r.partidas_para_subir
+                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.id, r.partidas_para_subir
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
                     JOIN andar a on a.id = r.id_andar_atual 
@@ -156,8 +170,8 @@ class UsuarioSql(PostgreSqlConn):
             usuarios = cur.fetchall()
             for usuario in usuarios:
                 ativo = 'Ativo' if usuario[2] == '1' else 'Inativo'
-                historico = 'público' if usuario[3] == '1' else 'privado'
-                Retorno.resultado += f'''- {usuario[0]: <12};{usuario[1]: <8};{ativo:<5};Histórico:{historico:<5};R: {usuario[4]}; ToUp: {usuario[5]} \n'''
+                andarAtual = Mensagens.LISTA_ANDARES_CAIXA_ALTA[usuario[4]-1]
+                Retorno.resultado += f'''- {usuario[0]: <12};{usuario[1]: <8};{ativo:<5};R: {andarAtual}; ToUp: {usuario[5]} \n'''
 
             cur.close()
             conn.close()
@@ -207,7 +221,7 @@ class UsuarioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
 
-    def GetPartidasUsuario(self, IdDiscord):
+    def GetPartidasUsuario(self, IdDiscord, token):
         Retorno = DBResultado()
         historicoPartidas = []
         textoResultado = ''
@@ -215,19 +229,34 @@ class UsuarioSql(PostgreSqlConn):
             conn = psycopg2.connect(self.connectionString)
             cur = conn.cursor()
 
-            cur.execute(f"""          
-                SELECT 
-                    u.nome as desafiante, u2.nome as desafiado, 
-                    hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                    hp.data_criacao, hp.token
-                    FROM historico_partidas hp 
-                    JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                    JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                    JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                    WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
-                    ORDER BY hp.id DESC
-                    LIMIT 30
-                """)
+            if not token or token.isspace():
+                cur.execute(f"""          
+                    SELECT 
+                        u.nome as desafiante, u2.nome as desafiado, 
+                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                        hp.data_criacao, hp.token
+                        FROM historico_partidas hp 
+                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                        WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
+                        ORDER BY hp.id DESC
+                        LIMIT 30
+                    """)
+            else:
+                cur.execute(f"""          
+                    SELECT 
+                        u.nome as desafiante, u2.nome as desafiado, 
+                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                        hp.data_criacao, hp.token
+                        FROM historico_partidas hp 
+                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                        WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}' and position('{token}' in hp.token) > 0
+                        ORDER BY hp.id DESC
+                        LIMIT 30
+                    """)                    
 
             historicoPartidas = cur.fetchall()
 
@@ -249,7 +278,7 @@ class UsuarioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
 
-    def GetPartidas(self):
+    def GetPartidas(self, token):
         Retorno = DBResultado()
         historicoPartidas = []
         textoResultado = ''
@@ -257,18 +286,33 @@ class UsuarioSql(PostgreSqlConn):
             conn = psycopg2.connect(self.connectionString)
             cur = conn.cursor()
 
-            cur.execute(f"""          
-                SELECT 
-                    u.nome as desafiante, u2.nome as desafiado, 
-                    hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                    hp.data_criacao, hp.token
-                    FROM historico_partidas hp 
-                    JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                    JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                    JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                    ORDER BY hp.id DESC
-                    LIMIT 30
-                """)
+            if not token or token.isspace():
+                cur.execute(f"""          
+                    SELECT 
+                        u.nome as desafiante, u2.nome as desafiado, 
+                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                        hp.data_criacao, hp.token
+                        FROM historico_partidas hp 
+                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                        ORDER BY hp.id DESC
+                        LIMIT 30
+                    """)
+            else:
+                cur.execute(f"""          
+                    SELECT 
+                        u.nome as desafiante, u2.nome as desafiado, 
+                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                        hp.data_criacao, hp.token
+                        FROM historico_partidas hp 
+                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                        WHERE position('{token}' in hp.token) > 0
+                        ORDER BY hp.id DESC
+                        LIMIT 30
+                    """)
 
             historicoPartidas = cur.fetchall()
 

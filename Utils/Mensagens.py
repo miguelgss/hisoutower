@@ -63,3 +63,14 @@ class Mensagens():
         'torre2',
         'torre3'
     ]
+
+    LISTA_ANDARES_CAIXA_ALTA = [
+        'CAMPEÃO',
+        'ELITE 1',
+        'ELITE 2',
+        'ELITE 3',
+        'ELITE 4',
+        'TORRE 1',
+        'TORRE 2',
+        'TORRE 3',
+    ]
