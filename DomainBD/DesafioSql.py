@@ -274,7 +274,7 @@ class DesafioSql(PostgreSqlConn):
             cur.execute(f"""     
                 select hp.id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, ep.nome
                 from historico_partidas hp
-                join estado_partida ep on id = hp.id_estado_partida
+                join estado_partida ep on ep.id = hp.id_estado_partida
                 where hp.token = '{token}'
                 """)
             partida = cur.fetchone()
