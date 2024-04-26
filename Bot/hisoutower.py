@@ -19,10 +19,14 @@ help_command = commands.DefaultHelpCommand(
     no_category = 'Comandos gerais'
 )
 
+activity = discord.Game(name="SOKUTOWER: Use ;help para ver os comandos!")
+
 bot = commands.Bot(
     command_prefix=';', 
     intents=intents,
-    help_command = help_command)
+    help_command = help_command,
+    activity=activity
+    )
 
 def run_discord_bot():
 
@@ -47,9 +51,10 @@ def run_discord_bot():
     async def checkMatches():
         try:
             expirarPartidas = rotinasDB.ExpirarPartidas()
-            txtActivity = f";help para usar comandos | {datetime.now().strftime('%X')} \n {expirarPartidas.resultado}"
-            activity = discord.CustomActivity(txtActivity)
-            await bot.change_presence(status=discord.Status.online, activity=activity)
+            txtActivity = f"SOKUTOWER: Use ;help para ver os comandos! | {datetime.now().strftime('%X')} \n {expirarPartidas.resultado}"
+            print(txtActivity)
+            # activity = discord.Game(name="SOKUTOWER: Use ;help para ver os comandos!" + (txtActivity))
+            # await bot.change_presence(status=discord.Status.online, activity=activity)
         except Exception as e:
             print(e)
         
@@ -117,41 +122,50 @@ def run_discord_bot():
         nome:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
         ):
         resultado = usuariosDB.ListarUsuarios(nome)
-        await ctx.send(
-            embed = discord.Embed(title=f"Jogadores:",
-            description=f'''{resultado.resultado}''',
-            color=resultado.corResultado)
-        )
+        if(resultado.corResultado == Cores.Sucesso):
+            await ctx.send(f"""```{resultado.resultado}```""")
+        else:
+            await ctx.send(
+                embed = discord.Embed(title=f"Jogadores:",
+                description=f'''{resultado.resultado}''',
+                color=resultado.corResultado)
+            )
 
     @bot.command(
-        brief=f'Lista as 30 partidas mais recentes do usuário.', 
-        description='Lista as 30 partidas mais recentes do usuário.',
+        brief=f'Lista as 10 partidas mais recentes do usuário.', 
+        description='Lista as 10 partidas mais recentes do usuário.',
         aliases = ['hmp','mp', 'minhaspartidas', 'historicominhaspartidas'])
     async def HistoricoMinhasPartidas(
         ctx,
         token:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
         ):
         resultado = usuariosDB.GetPartidasUsuario(ctx.author.id, token)
-        await ctx.send(
-            embed = discord.Embed(title=f"Meu histórico de partidas:",
-            description=f'''{resultado.resultado}''',
-            color=resultado.corResultado)
-        )
+        if(resultado.corResultado == Cores.Sucesso):
+            await ctx.send(f"""```{resultado.resultado}```""")
+        else:
+            await ctx.send(
+                embed = discord.Embed(title=f"Meu histórico de partidas:",
+                description=f'''{resultado.resultado}''',
+                color=resultado.corResultado)
+            )
 
     @bot.command(
-        brief=f'Lista as 30 partidas mais recentes.', 
-        description='Lista as 30 partidas mais recentes do sistema.',
+        brief=f'Lista as 10 partidas mais recentes.', 
+        description='Lista as 10 partidas mais recentes do sistema.',
         aliases = ['hp', 'historicopartidas', 'historico'])
     async def HistoricoPartidas(
         ctx,
         token:str = commands.parameter(default=None, description="Parâmetro que filtrará o resultado.")
         ):
         resultado = usuariosDB.GetPartidas(token)
-        await ctx.send(
-            embed = discord.Embed(title=f"Histórico de partidas:",
-            description=f'''{resultado.resultado}''',
-            color=resultado.corResultado)
-        )
+        if(resultado.corResultado == Cores.Sucesso):
+            await ctx.send(f"""```{resultado.resultado}```""")
+        else:
+            await ctx.send(
+                embed = discord.Embed(title=f"Histórico de partidas:",
+                description=f'''{resultado.resultado}''',
+                color=resultado.corResultado)
+            )
         
     @bot.command(
         brief=f'Retorna ou remove o usuário do evento.', 

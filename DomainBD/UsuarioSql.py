@@ -1,9 +1,10 @@
-from .PostgreSqlConn import PostgreSqlConn
 import psycopg2
 import traceback
 from datetime import datetime, timedelta
-from Utils import Mensagens, Cores, Gerador
+from table2ascii import table2ascii as t2a, PresetStyle
 
+from .PostgreSqlConn import PostgreSqlConn
+from Utils import Mensagens, Cores, Gerador
 from .DataTransferObjects import DBResultado, UsuarioDTO
 from .TabelasDominioSql import TabelasDominioSql
 
@@ -147,31 +148,46 @@ class UsuarioSql(PostgreSqlConn):
 
     def ListarUsuarios(self, nome = None):
         Retorno = DBResultado()
+        jogadores = []
         try:
             conn = psycopg2.connect(self.connectionString)
             cur = conn.cursor()
 
             if not nome or nome.isspace():
                 cur.execute(f"""
-                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.id, r.partidas_para_subir
+                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
-                    JOIN andar a on a.id = r.id_andar_atual  
+                    JOIN andar a on a.id = r.id_andar_atual 
+                    order by a.id ASC, ativo DESC, tipo_perfil DESC 
                     """)
             else:
                 cur.execute(f"""
-                    SELECT usuario.nome, tipo_perfil, ativo, dados_publicos, a.id, r.partidas_para_subir
+                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
                     JOIN andar a on a.id = r.id_andar_atual 
                     WHERE position('{nome}' in usuario.nome) > 0
+                    order by a.id ASC, ativo DESC, tipo_perfil DESC
                 """)
 
             usuarios = cur.fetchall()
             for usuario in usuarios:
-                ativo = 'Ativo' if usuario[2] == '1' else 'Inativo'
-                andarAtual = Mensagens.LISTA_ANDARES_CAIXA_ALTA[usuario[4]-1]
-                Retorno.resultado += f'''- {usuario[0]: <12};{usuario[1]: <8};{ativo:<5};R: {andarAtual}; ToUp: {usuario[5]} \n'''
+                andarAtual = Mensagens.LISTA_ANDARES_CAIXA_ALTA[usuario[1]-1]
+                nomeJogador = f"~~{usuario[0].upper()}~~" if usuario[5] == '0' else usuario[0].upper()
+                nomeJogador = f"**{nomeJogador}**" if usuario[4] == 'ORGANIZADOR' else nomeJogador
+
+                novoJogador = [nomeJogador,andarAtual, usuario[2], usuario[3]]
+                jogadores.append(novoJogador)
+                if(len(jogadores) > 25): break
+
+            output = t2a(
+                header=["Nome","Andar", "SobeEm", "DesceEm" ],
+                body=jogadores,
+                style=PresetStyle.thin_compact
+            )
+            print(output)
+            Retorno.resultado += f"""\n{output}\n Total de jogadores: {len(usuarios)}"""
 
             cur.close()
             conn.close()
@@ -241,7 +257,7 @@ class UsuarioSql(PostgreSqlConn):
                         JOIN estado_partida ep on hp.id_estado_partida = ep.id 
                         WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
                         ORDER BY hp.id DESC
-                        LIMIT 30
+                        LIMIT 10
                     """)
             else:
                 cur.execute(f"""          
@@ -255,19 +271,29 @@ class UsuarioSql(PostgreSqlConn):
                         JOIN estado_partida ep on hp.id_estado_partida = ep.id 
                         WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}' and position('{token}' in hp.token) > 0
                         ORDER BY hp.id DESC
-                        LIMIT 30
+                        LIMIT 10
                     """)                    
 
-            historicoPartidas = cur.fetchall()
-
-            for partida in historicoPartidas:
+            historicoPesquisa = cur.fetchall()
+            teste = "Teste"
+            teste.capitalize()
+            for partida in historicoPesquisa:
                 vitoriasDesafiante = partida[2] if partida[2] != None else "-"
                 vitoriasDesafiado = partida[3] if partida[3] != None else "-"
                 dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
+                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7], dataCriacaoFormatada]
+                historicoPartidas.append(novaPartida)
+                if(len(historicoPartidas) > 10): break
 
-                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {partida[7]} | {dataCriacaoFormatada} \n'
+            output = t2a(
+                header=["Desafiante","Wins", "Wins", "Desafiado", "Estado", "Token", "Criado"],
+                body=historicoPartidas,
+                style=PresetStyle.thin_compact
+            )
+            print(output)
+            
+            Retorno.resultado = f"""{output}\nTotal de partidas: {len(historicoPesquisa)}"""
 
-            Retorno.resultado = textoResultado
             Retorno.corResultado = Cores.Sucesso
             cur.close()
             conn.close()
@@ -296,8 +322,7 @@ class UsuarioSql(PostgreSqlConn):
                         JOIN usuario u on hp.id_usuario_desafiante = u.id 
                         JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
                         JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                        ORDER BY hp.id DESC
-                        LIMIT 30
+                        ORDER by ep.nome ASC, hp.data_criacao
                     """)
             else:
                 cur.execute(f"""          
@@ -310,20 +335,27 @@ class UsuarioSql(PostgreSqlConn):
                         JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
                         JOIN estado_partida ep on hp.id_estado_partida = ep.id 
                         WHERE position('{token}' in hp.token) > 0
-                        ORDER BY hp.id DESC
-                        LIMIT 30
+                        ORDER by ep.nome ASC, hp.data_criacao
                     """)
 
-            historicoPartidas = cur.fetchall()
+            historicoPesquisa = cur.fetchall()
 
-            for partida in historicoPartidas:
+            for partida in historicoPesquisa:
                 vitoriasDesafiante = partida[2] if partida[2] != None else "-"
                 vitoriasDesafiado = partida[3] if partida[3] != None else "-"
                 dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
+                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7], dataCriacaoFormatada]
+                historicoPartidas.append(novaPartida)
+                if(len(historicoPartidas) > 10): break
 
-                textoResultado += f'- {partida[0]}[{vitoriasDesafiante}] X [{vitoriasDesafiado}]{partida[1]} | {partida[5]} | {partida[7]} | {dataCriacaoFormatada} \n'
-
-            Retorno.resultado = textoResultado
+            output = t2a(
+                header=["Desafiante","Wins", "Wins", "Desafiado", "Estado", "Token", "Criado"],
+                body=historicoPartidas,
+                style=PresetStyle.thin_compact
+            )
+            
+            print(output)
+            Retorno.resultado = f"""{output}\nTotal de partidas: {len(historicoPesquisa)}"""
             Retorno.corResultado = Cores.Sucesso
             cur.close()
             conn.close()

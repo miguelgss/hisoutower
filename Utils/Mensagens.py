@@ -4,6 +4,8 @@ class Mensagens():
     SemPermissao = "Você não possui permissão para utilizar este comando."
 
     # Constantes:
+    FT_NUMERO = 4
+
     U_JOGADOR = "JOGADOR"
     U_ORGANIZADOR = "ORGANIZADOR"
 
@@ -13,6 +15,7 @@ class Mensagens():
     EP_CANCELADO = "CANCELADO_EXPIRACAO"
     EP_JOGADOR_AUSENTE = "VITORIA_JOGADOR_AUSENTE"
     EP_EMPATE = "EMPATE"
+    EP_ESPERANDO_CONFIRMACAO_JOGADOR = "ESPERANDO_CONFIRMACAO_JOGADOR"
 
     TA_EXPIRACAO = "EXPIRACAO"
 

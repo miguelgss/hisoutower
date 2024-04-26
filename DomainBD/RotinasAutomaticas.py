@@ -1,4 +1,5 @@
 import psycopg2
+import traceback
 from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
@@ -19,20 +20,23 @@ class RotinasAutomaticas(PostgreSqlConn):
         cur = conn.cursor()
         tipoAtualizacaoExpiracao = self.tabelasDominioDB.GetTipoAtualizacao([Mensagens.TA_EXPIRACAO])[0]
         estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
-        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida(Mensagens.EP_AGUARDANDO)
+        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
 
+        print("Estados:")
+        print(estadoPartidaFinalizada)
+        print(estadoPartidaAguardando)
         contador = 0
         try:
             cur.execute(f"""SELECT id_usuario_desafiante, id_usuario_desafiado, token FROM historico_partidas 
                 WHERE data_expiracao < '{dataAtual}' and
-                id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id}
+                id_estado_partida = {estadoPartidaAguardando[0].Id}
                 """)
             partidasEmExpiracao = cur.fetchall()
 
             for partida in partidasEmExpiracao:
                 cur.execute(f"""
-                    INSERT INTO registro_atualizacoes_sistema (id_tipo_atualizacao, dados_trafegados, data_criacao)
-                    VALUES ({tipoAtualizacaoExpiracao.Id}, 'Desafiante: {partida[0]}; Desafiado: {partida[1]}; Token: {partida[2]}; DataExpiração: {dataAtual}', '{dataAtual}')
+                    INSERT INTO registro_atualizacoes_sistema (id_usuario_atualizacao, id_tipo_atualizacao, dados_trafegados, data_criacao)
+                    VALUES (6, {tipoAtualizacaoExpiracao.Id}, 'Desafiante: {partida[0]}; Desafiado: {partida[1]}; Token: {partida[2]}; DataExpiração: {dataAtual}', '{dataAtual}')
                 """)
                 contador += 1
 
@@ -43,7 +47,7 @@ class RotinasAutomaticas(PostgreSqlConn):
                 """)
                 
             Retorno.resultado = f"Número de partidas canceladas por expiração desde a última atualização: {contador}"
-
+            print(Retorno.resultado)
             conn.commit()
             cur.close()
             conn.close()
@@ -52,6 +56,6 @@ class RotinasAutomaticas(PostgreSqlConn):
             conn.rollback()
             cur.close()
             conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(e)
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
         return Retorno

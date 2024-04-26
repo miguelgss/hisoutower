@@ -254,6 +254,68 @@ class DesafioSql(PostgreSqlConn):
 
         return Retorno
 
+    def RelatarResultadoJogador(self, IdDiscord, token, vitoriasDesafiante, vitoriasDesafiado):
+        Retorno = DBResultado()
+        partida = ''
+        dataAtual = datetime.now()
+        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
+        estadoPartidaConcluida = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CONCLUIDO])
+        idEstadoPartidasFinalizadas = [o.Id for o in estadoPartidaFinalizada]
+        VitoriosoId = 0
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+
+            cur.execute("SELECT id from historico_partidas hp join usuario u on u.id = hp.id_usuario where hp.token = '{token}'")
+            if(vitoriasDesafiante != Mensagens.FT_NUMERO and 
+            vitoriasDesafiado != Mensagens.FT_NUMERO or 
+            (vitoriasDesafiante > Mensagens.FT_NUMERO or vitoriasDesafiado > Mensagens.FT_NUMERO) or 
+            (vitoriasDesafiante == Mensagens.FT_NUMERO and vitoriasDesafiado == Mensagens.FT_NUMERO)):
+                cur.close()
+                conn.close()
+                Retorno.resultado += f"As partidas são FT{Mensagens.FT_NUMERO}! Apenas um deve deve ter {Mensagens.FT_NUMERO} vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    def AprovarResultadoJogador(self, IdDiscord, token):
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            pass
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+    
+    def CorrigirResultadoJogador(self, IdDiscord, token, vitoriasDesafiante, vitoriasDesafiado):
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            if(vitoriasDesafiante != Mensagens.FT_NUMERO and 
+            vitoriasDesafiado != Mensagens.FT_NUMERO or 
+            (vitoriasDesafiante > Mensagens.FT_NUMERO or vitoriasDesafiado > Mensagens.FT_NUMERO) or 
+            (vitoriasDesafiante == Mensagens.FT_NUMERO and vitoriasDesafiado == Mensagens.FT_NUMERO)):
+                cur.close()
+                conn.close()
+                Retorno.resultado += f"As partidas são FT{Mensagens.FT_NUMERO}! Apenas um deve deve ter {Mensagens.FT_NUMERO} vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+            pass
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+        return Retorno
+
     def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado):
         Retorno = DBResultado()
         partida = ''
@@ -265,10 +327,13 @@ class DesafioSql(PostgreSqlConn):
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            if(vitoriasDesafiante != 4 and vitoriasDesafiado != 4 or (vitoriasDesafiante > 4 or vitoriasDesafiado > 4) or (vitoriasDesafiante == 4 and vitoriasDesafiado == 4)):
+            if(vitoriasDesafiante != Mensagens.FT_NUMERO and 
+            vitoriasDesafiado != Mensagens.FT_NUMERO or 
+            (vitoriasDesafiante > Mensagens.FT_NUMERO or vitoriasDesafiado > Mensagens.FT_NUMERO) or 
+            (vitoriasDesafiante == Mensagens.FT_NUMERO and vitoriasDesafiado == Mensagens.FT_NUMERO)):
                 cur.close()
                 conn.close()
-                Retorno.resultado += "As partidas são FT4! Apenas um deve deve ter 4 vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
+                Retorno.resultado += f"As partidas são FT{Mensagens.FT_NUMERO}! Apenas um deve deve ter {Mensagens.FT_NUMERO} vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
             cur.execute(f"""     
@@ -479,7 +544,15 @@ class DesafioSql(PostgreSqlConn):
                                 vitorias_consecutivas = 0
                                 WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                             """)
-
+                    elif(jogadores[0][1] < jogadores[1][1] and jogadores[1][1] > 6): # Se o rank do vitorioso for maior que o do derrotado...
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                partidas_para_descer = 2,
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+                        
                 else: # Se o jogador vitorioso fizer parte dos celestiais...
                     if(jogadores[0][1] >= jogadores[1][1]): # Comparando os andares
                         posicaoTomada = jogadores[0][1] - 1
@@ -504,6 +577,14 @@ class DesafioSql(PostgreSqlConn):
                                 vitorias_consecutivas = 0
                                 WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                             """) 
+                    else:
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+                
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
                 Retorno.corResultado = Cores.Sucesso
 

@@ -1,4 +1,5 @@
 psycopb2-binary
+table2ascii
 discord==2.3.2
 discord.py==2.3.2
 pillow==9.0.1
