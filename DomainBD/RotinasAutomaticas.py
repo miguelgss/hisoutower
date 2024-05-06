@@ -22,9 +22,6 @@ class RotinasAutomaticas(PostgreSqlConn):
         estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
         estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
 
-        print("Estados:")
-        print(estadoPartidaFinalizada)
-        print(estadoPartidaAguardando)
         contador = 0
         try:
             cur.execute(f"""SELECT id_usuario_desafiante, id_usuario_desafiado, token FROM historico_partidas 
@@ -47,7 +44,6 @@ class RotinasAutomaticas(PostgreSqlConn):
                 """)
                 
             Retorno.resultado = f"Número de partidas canceladas por expiração desde a última atualização: {contador}"
-            print(Retorno.resultado)
             conn.commit()
             cur.close()
             conn.close()

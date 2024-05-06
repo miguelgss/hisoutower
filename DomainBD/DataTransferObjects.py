@@ -4,6 +4,7 @@ class DBResultado():
     corResultado = None
 
 class UsuarioDTO():
+    IdDiscord = None
     Nome = ''
     Ativo = ''
     DadosPublicos = ''

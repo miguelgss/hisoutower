@@ -51,6 +51,13 @@ class DesafioSql(PostgreSqlConn):
             jogadoresTop = cur.fetchall()
             
             if(jogadores[0] != None and jogadores[1] != None):
+                if(jogadores[0][0] == jogadores[1][0]):
+                    cur.close()
+                    conn.close()
+                    Retorno.resultado += "Não é possível desafiar a si mesmo."
+                    Retorno.corResultado = Cores.Alerta
+                    return Retorno
+
                 # Comparação de andares entre os jogadores:
                 if(jogadores[0][2] > 2 and len(jogadoresTop) > 1):
                     if(jogadores[1][2] == 1):
@@ -148,6 +155,7 @@ class DesafioSql(PostgreSqlConn):
         Retorno = DBResultado()
         dataAtual = datetime.now()
         estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
+        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
@@ -169,9 +177,9 @@ class DesafioSql(PostgreSqlConn):
             cur.execute(f"""
                     SELECT ID, id_usuario_desafiante, id_usuario_desafiado FROM historico_partidas 
                     where token = '{token}' and 
-                    id_usuario_desafiado = {jogador[0]} or
-                    id_usuario_desafiante = {jogador[0]} 
-                    (id_estado_partida != {estadoPartidaFinalizada[0].Id} and id_estado_partida != {estadoPartidaFinalizada[1].Id} and id_estado_partida != {estadoPartidaFinalizada[2].Id})
+                    (id_usuario_desafiado = {jogador[0]} or
+                    id_usuario_desafiante = {jogador[0]} ) and
+                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
                 """)
             
             partida = cur.fetchone()
@@ -186,22 +194,22 @@ class DesafioSql(PostgreSqlConn):
             cur.execute(f"""
                     SELECT ID, id_usuario_desafiado, id_usuario_desafiante FROM historico_partidas 
                     WHERE 
-                    data_criacao + '3 day'::interval < {dataAtual}
-                    id_usuario_desafiado = {jogador[0]} or
-                    id_usuario_desafiante = {jogador[0]}
+                    data_criacao + '3 day'::interval < '{dataAtual}' and
+                    (id_usuario_desafiado = {jogador[0]} or
+                    id_usuario_desafiante = {jogador[0]})
                 """)
             
             houveDesafioRecente = cur.fetchone()
 
             idOponente = partida[1] if partida[1] == jogador[0] else partida[2]
-            cur.execute(f"""SELECT id_andar_atual from ranquemaento where id_usuario = {idOponente}""")
+            cur.execute(f"""SELECT id_andar_atual from ranqueamento where id_usuario = {idOponente}""")
             oponente = cur.fetchone()
 
             if(oponente[0] > jogador[1] or houveDesafioRecente != None): #Comparando os andares de cada jogador
                 cur.execute(f"""
                     UPDATE historico_partidas SET
                     data_finalizacao = '{dataAtual}',
-                    id_estado_partida = {estadoPartidaFinalizada[2].Id}
+                    id_estado_partida = {estadoPartidaFinalizada[0].Id}
                     WHERE token = '{token}'
                 """)
 
@@ -252,68 +260,6 @@ class DesafioSql(PostgreSqlConn):
             Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
 
-        return Retorno
-
-    def RelatarResultadoJogador(self, IdDiscord, token, vitoriasDesafiante, vitoriasDesafiado):
-        Retorno = DBResultado()
-        partida = ''
-        dataAtual = datetime.now()
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
-        estadoPartidaConcluida = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CONCLUIDO])
-        idEstadoPartidasFinalizadas = [o.Id for o in estadoPartidaFinalizada]
-        VitoriosoId = 0
-        conn = psycopg2.connect(self.connectionString)
-        cur = conn.cursor()
-        try:
-
-            cur.execute("SELECT id from historico_partidas hp join usuario u on u.id = hp.id_usuario where hp.token = '{token}'")
-            if(vitoriasDesafiante != Mensagens.FT_NUMERO and 
-            vitoriasDesafiado != Mensagens.FT_NUMERO or 
-            (vitoriasDesafiante > Mensagens.FT_NUMERO or vitoriasDesafiado > Mensagens.FT_NUMERO) or 
-            (vitoriasDesafiante == Mensagens.FT_NUMERO and vitoriasDesafiado == Mensagens.FT_NUMERO)):
-                cur.close()
-                conn.close()
-                Retorno.resultado += f"As partidas são FT{Mensagens.FT_NUMERO}! Apenas um deve deve ter {Mensagens.FT_NUMERO} vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
-                Retorno.corResultado = Cores.Alerta
-                return Retorno
-        except Exception as e:
-            cur.close()
-            conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
-            Retorno.corResultado = Cores.Erro
-        return Retorno
-
-    def AprovarResultadoJogador(self, IdDiscord, token):
-        conn = psycopg2.connect(self.connectionString)
-        cur = conn.cursor()
-        try:
-            pass
-        except Exception as e:
-            cur.close()
-            conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
-            Retorno.corResultado = Cores.Erro
-        return Retorno
-    
-    def CorrigirResultadoJogador(self, IdDiscord, token, vitoriasDesafiante, vitoriasDesafiado):
-        conn = psycopg2.connect(self.connectionString)
-        cur = conn.cursor()
-        try:
-            if(vitoriasDesafiante != Mensagens.FT_NUMERO and 
-            vitoriasDesafiado != Mensagens.FT_NUMERO or 
-            (vitoriasDesafiante > Mensagens.FT_NUMERO or vitoriasDesafiado > Mensagens.FT_NUMERO) or 
-            (vitoriasDesafiante == Mensagens.FT_NUMERO and vitoriasDesafiado == Mensagens.FT_NUMERO)):
-                cur.close()
-                conn.close()
-                Retorno.resultado += f"As partidas são FT{Mensagens.FT_NUMERO}! Apenas um deve deve ter {Mensagens.FT_NUMERO} vitórias para considerar a partida finalizada. Favor reavaliar os números passados."
-                Retorno.corResultado = Cores.Alerta
-                return Retorno
-            pass
-        except Exception as e:
-            cur.close()
-            conn.close()
-            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
-            Retorno.corResultado = Cores.Erro
         return Retorno
 
     def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado):
@@ -440,27 +386,30 @@ class DesafioSql(PostgreSqlConn):
                 Retorno.corResultado = Cores.Sucesso
             elif(jogadores[0] != None and jogadores[1] != None):
                 if(jogadores[0][1] > 5): # Se o andar do jogador vitorioso for da torre...
-                    if(jogadores[0][1] >= jogadores[1][1] and jogadores[1][1] > 6): # Comparando os andares
-                        if(jogadores[0][2] < 2):
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    id_andar_atual = {(jogadores[0][1] - 1)},
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
+                    if(jogadores[1][1] > 5): # Se o derrotado for da torre...
+                        # Atualizando dados do vencedor
+                        novoAndar = jogadores[0][1]
+                        partidasParaSubir = 2
+                        partidasParaDescer = jogadores[0][3]
+                        if(jogadores[0][1] <= jogadores[1][1]):
+                            partidasParaDescer = 2
+                        if(jogadores[0][1] == 6 and len(jogadoresTop) < 1 and jogadores[0][4] > 1):
+                            novoAndar = 1
+                        elif(jogadores[0][2] < 2):
+                            novoAndar = jogadores[0][1] - 1 if jogadores[0][1] > 6 else jogadores[0][1]
                         else:
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    partidas_para_subir = 1,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
+                            partidasParaSubir = 1
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                id_andar_atual = {novoAndar},
+                                partidas_para_subir = {partidasParaSubir},
+                                partidas_para_descer = {partidasParaDescer},
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
+                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
 
+                        # Atualizando dados do derrotado
                         if(jogadores[1][3] < 2):
                             estaNoUltimoAndar = 0 if jogadores[1][1] == numeroDeAndaresAtual else 1
                             cur.execute(f"""
@@ -473,59 +422,18 @@ class DesafioSql(PostgreSqlConn):
                                     WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                                 """)
                         else:
+                            estaNoUltimoAndar = 2 if jogadores[1][1] == numeroDeAndaresAtual else 1
                             cur.execute(f"""
                                 UPDATE ranqueamento SET
                                     partidas_para_subir = 2,
-                                    partidas_para_descer = 1,
+                                    partidas_para_descer = {estaNoUltimoAndar},
                                     data_atualizacao = '{dataAtual}',
                                     vitorias_consecutivas = 0
                                     WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                                 """)
 
-                    elif(jogadores[0][1] >= jogadores[1][1] and len(jogadoresTop) < 1): #Quando não tiver nenhum jogador celestial na temporada atual...
-
-                        if(jogadores[0][2] < 2):
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    id_andar_atual = 1,
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
-                        else:
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    partidas_para_subir = 1,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                    WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
-
-                        if(jogadores[1][3] < 2):
-                            estaNoUltimoAndar = 0 if jogadores[1][1] == numeroDeAndaresAtual else 1
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    id_andar_atual = {(jogadores[1][1] + estaNoUltimoAndar)},
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = 0
-                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
-                        else:
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = 1,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = 0
-                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
-                        
-                    elif(jogadores[0][1] == 6 and jogadores[1][1] == jogadoresTop[-1][1]):
+                    # Se o derrotado for da elite...
+                    elif(jogadores[0][1] == 6 and jogadoresTop != None and jogadores[1][1] == jogadoresTop[-1][1]):
                         cur.execute(f"""
                             UPDATE ranqueamento SET
                                 id_andar_atual = {jogadores[-1][1]},
@@ -543,14 +451,6 @@ class DesafioSql(PostgreSqlConn):
                                 data_atualizacao = '{dataAtual}',
                                 vitorias_consecutivas = 0
                                 WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
-                    elif(jogadores[0][1] < jogadores[1][1] and jogadores[1][1] > 6): # Se o rank do vitorioso for maior que o do derrotado...
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                partidas_para_descer = 2,
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
                             """)
                         
                 else: # Se o jogador vitorioso fizer parte dos celestiais...

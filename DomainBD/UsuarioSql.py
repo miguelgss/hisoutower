@@ -76,11 +76,13 @@ class UsuarioSql(PostgreSqlConn):
             if(pesquisa != None):
                 if(pesquisa[2] == '1'):
                     cur.execute(f"""
-                            SELECT id from historico_partidas where id_usuario_desafiante = {pesquisa[0]} or id_usuario_desafiado = {pesquisa[0]}
+                            SELECT id from historico_partidas WHERE (id_usuario_desafiante = {pesquisa[0]} or id_usuario_desafiado = {pesquisa[0]})
                             and id_estado_partida = 1
                         """)
                     possuiPartidaPendente = cur.fetchone()
 
+                    print("Validando se possui partida pendente")
+                    print(possuiPartidaPendente)
                     if(possuiPartidaPendente != None):
                         Retorno.corResultado = Cores.Alerta
                         Retorno.resultado =  f"""
@@ -155,7 +157,7 @@ class UsuarioSql(PostgreSqlConn):
 
             if not nome or nome.isspace():
                 cur.execute(f"""
-                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo
+                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo, r.vitorias_consecutivas
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
                     JOIN andar a on a.id = r.id_andar_atual 
@@ -163,7 +165,7 @@ class UsuarioSql(PostgreSqlConn):
                     """)
             else:
                 cur.execute(f"""
-                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo
+                    SELECT usuario.nome, a.id, r.partidas_para_subir, r.partidas_para_descer, tipo_perfil, ativo, r.vitorias_consecutivas
                     FROM usuario
                     JOIN ranqueamento r on id_usuario = usuario.id  
                     JOIN andar a on a.id = r.id_andar_atual 
@@ -177,12 +179,12 @@ class UsuarioSql(PostgreSqlConn):
                 nomeJogador = f"~~{usuario[0].upper()}~~" if usuario[5] == '0' else usuario[0].upper()
                 nomeJogador = f"**{nomeJogador}**" if usuario[4] == 'ORGANIZADOR' else nomeJogador
 
-                novoJogador = [nomeJogador,andarAtual, usuario[2], usuario[3]]
+                novoJogador = [nomeJogador,andarAtual, usuario[2], usuario[3], usuario[6]]
                 jogadores.append(novoJogador)
                 if(len(jogadores) > 25): break
 
             output = t2a(
-                header=["Nome","Andar", "SobeEm", "DesceEm" ],
+                header=["Nome","Andar", "↑", "↓", "VC" ],
                 body=jogadores,
                 style=PresetStyle.thin_compact
             )
@@ -245,34 +247,28 @@ class UsuarioSql(PostgreSqlConn):
             conn = psycopg2.connect(self.connectionString)
             cur = conn.cursor()
 
+            query = f"""
+                SELECT 
+                u.nome as desafiante, u2.nome as desafiado, 
+                hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                hp.data_criacao, hp.token
+                FROM historico_partidas hp 
+                JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                WHERE (u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}') $WHERE
+                ORDER by 
+                CASE when ep.NOME = '{Mensagens.EP_CANCELADO}' then 1 else 0 end, 
+                CASE when ep.NOME = '{Mensagens.EP_JOGADOR_AUSENTE}' then 1 else 0 end,
+                ep.NOME,
+                hp.data_criacao DESC
+            """
+
             if not token or token.isspace():
-                cur.execute(f"""          
-                    SELECT 
-                        u.nome as desafiante, u2.nome as desafiado, 
-                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                        hp.data_criacao, hp.token
-                        FROM historico_partidas hp 
-                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                        WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}'
-                        ORDER BY hp.id DESC
-                        LIMIT 10
-                    """)
+                cur.execute(query.replace('$WHERE', ''))
             else:
-                cur.execute(f"""          
-                    SELECT 
-                        u.nome as desafiante, u2.nome as desafiado, 
-                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                        hp.data_criacao, hp.token
-                        FROM historico_partidas hp 
-                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                        WHERE u.discord_id_user = '{IdDiscord}' or u2.discord_id_user='{IdDiscord}' and position('{token}' in hp.token) > 0
-                        ORDER BY hp.id DESC
-                        LIMIT 10
-                    """)                    
+                cur.execute(query.replace("$WHERE",f"""and token like '%{token}%'"""))
+              
 
             historicoPesquisa = cur.fetchall()
             teste = "Teste"
@@ -281,7 +277,7 @@ class UsuarioSql(PostgreSqlConn):
                 vitoriasDesafiante = partida[2] if partida[2] != None else "-"
                 vitoriasDesafiado = partida[3] if partida[3] != None else "-"
                 dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
-                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7], dataCriacaoFormatada]
+                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7].replace("gensou-", ""), dataCriacaoFormatada]
                 historicoPartidas.append(novaPartida)
                 if(len(historicoPartidas) > 10): break
 
@@ -312,31 +308,26 @@ class UsuarioSql(PostgreSqlConn):
             conn = psycopg2.connect(self.connectionString)
             cur = conn.cursor()
 
+            query = f"""
+                SELECT 
+                u.nome as desafiante, u2.nome as desafiado, 
+                hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
+                hp.data_criacao, hp.token
+                FROM historico_partidas hp 
+                JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                $WHERE
+                ORDER by 
+                CASE when ep.NOME = '{Mensagens.EP_CANCELADO}' then 1 else 0 end, 
+                CASE when ep.NOME = '{Mensagens.EP_JOGADOR_AUSENTE}' then 1 else 0 end,
+                ep.NOME,
+                hp.data_criacao DESC
+            """
             if not token or token.isspace():
-                cur.execute(f"""          
-                    SELECT 
-                        u.nome as desafiante, u2.nome as desafiado, 
-                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                        hp.data_criacao, hp.token
-                        FROM historico_partidas hp 
-                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                        ORDER by ep.nome ASC, hp.data_criacao
-                    """)
+                cur.execute(query.replace("$WHERE",""))
             else:
-                cur.execute(f"""          
-                    SELECT 
-                        u.nome as desafiante, u2.nome as desafiado, 
-                        hp.usuario_desafiante_vitorias, hp.usuario_desafiado_vitorias, hp.id_usuario_vencedor, ep.nome,
-                        hp.data_criacao, hp.token
-                        FROM historico_partidas hp 
-                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
-                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
-                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
-                        WHERE position('{token}' in hp.token) > 0
-                        ORDER by ep.nome ASC, hp.data_criacao
-                    """)
+                cur.execute(query.replace("$WHERE",f"""WHERE token like '%{token}%'"""))
 
             historicoPesquisa = cur.fetchall()
 
@@ -344,12 +335,12 @@ class UsuarioSql(PostgreSqlConn):
                 vitoriasDesafiante = partida[2] if partida[2] != None else "-"
                 vitoriasDesafiado = partida[3] if partida[3] != None else "-"
                 dataCriacaoFormatada = f'{partida[6].day}/{partida[6].month}/{partida[6].year}'
-                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7], dataCriacaoFormatada]
+                novaPartida = [partida[0].upper(), vitoriasDesafiante, vitoriasDesafiado, partida[1].upper(), partida[5], partida[7].replace("gensou-", ""), dataCriacaoFormatada]
                 historicoPartidas.append(novaPartida)
                 if(len(historicoPartidas) > 10): break
 
             output = t2a(
-                header=["Desafiante","Wins", "Wins", "Desafiado", "Estado", "Token", "Criado"],
+                header=["Desafiante","V", "V", "Desafiado", "Estado", "Token", "Criado"],
                 body=historicoPartidas,
                 style=PresetStyle.thin_compact
             )
@@ -386,4 +377,42 @@ class UsuarioSql(PostgreSqlConn):
         cur.close()
         conn.close()
 
+        return Retorno
+
+    def GetIdDiscordUsuariosPartida(self, token):
+        Retorno = DBResultado()
+        historicoPartidas = []
+        textoResultado = ''
+        try:
+            conn = psycopg2.connect(self.connectionString)
+            cur = conn.cursor()
+
+            cur.execute(f"""          
+                    SELECT 
+                        u.discord_id_user as desafiante, u2.discord_id_user as desafiado
+                        FROM historico_partidas hp 
+                        JOIN usuario u on hp.id_usuario_desafiante = u.id 
+                        JOIN usuario u2 on hp.id_usuario_desafiado = u2.id
+                        JOIN estado_partida ep on hp.id_estado_partida = ep.id 
+                        WHERE hp.token = '{token}'
+                    """)
+
+            idsJogadoresPartida = cur.fetchone()
+            
+            if(idsJogadoresPartida == None):
+                cur.close()
+                conn.close()
+                Retorno.resultado = "Partida não encontrada."
+                Retorno.corResultado = Cores.Alerta
+                return Retorno
+            
+            Retorno.resultado = [idsJogadoresPartida[0], idsJogadoresPartida[1]]
+            Retorno.corResultado = Cores.Sucesso
+            cur.close()
+            conn.close()
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
         return Retorno
