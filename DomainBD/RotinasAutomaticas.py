@@ -18,8 +18,7 @@ class RotinasAutomaticas(PostgreSqlConn):
         search = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
-        tipoAtualizacaoExpiracao = self.tabelasDominioDB.GetTipoAtualizacao([Mensagens.TA_EXPIRACAO])[0]
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
+        estadoPartidaCancelada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO])
         estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
 
         contador = 0
@@ -32,13 +31,13 @@ class RotinasAutomaticas(PostgreSqlConn):
 
             for partida in partidasEmExpiracao:
                 cur.execute(f"""
-                    INSERT INTO registro_atualizacoes_sistema (id_usuario_atualizacao, id_tipo_atualizacao, dados_trafegados, data_criacao)
-                    VALUES (6, {tipoAtualizacaoExpiracao.Id}, 'Desafiante: {partida[0]}; Desafiado: {partida[1]}; Token: {partida[2]}; DataExpiração: {dataAtual}', '{dataAtual}')
+                    INSERT INTO registro_atualizacoes_sistema (dados_trafegados, data_criacao, tipo_atualizacao)
+                    VALUES ('Desafiante: {partida[0]}; Desafiado: {partida[1]}; Token: {partida[2]}; DataExpiração: {dataAtual}', '{dataAtual}', '{Mensagens.TA_EXPIRACAO}')
                 """)
                 contador += 1
 
             cur.execute(f"""
-                    UPDATE historico_partidas set id_estado_partida = {estadoPartidaFinalizada[0].Id}, data_finalizacao = '{dataAtual}'
+                    UPDATE historico_partidas set id_estado_partida = {estadoPartidaCancelada[0].Id}, data_finalizacao = '{dataAtual}'
                     WHERE data_expiracao < '{dataAtual}' and
                     id_estado_partida = {estadoPartidaAguardando[0].Id}
                 """)

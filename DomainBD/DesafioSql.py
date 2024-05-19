@@ -154,7 +154,7 @@ class DesafioSql(PostgreSqlConn):
     def RecusarDesafio(self, token, IdDiscordAnulador):
         Retorno = DBResultado()
         dataAtual = datetime.now()
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
+        estadoPartidaRecusada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_RECUSADO])
         estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
         conn = psycopg2.connect(self.connectionString)
@@ -187,7 +187,7 @@ class DesafioSql(PostgreSqlConn):
             if(partida == None):
                 cur.close()
                 conn.close()
-                Retorno.resultado += "Não há desafios pendentes de conclusão ou o desafio com o token especificado não existe."
+                Retorno.resultado += "Não há desafios pendentes de conclusão com o token informado ou o desafio com o token especificado não existe."
                 Retorno.corResultado = Cores.Erro
                 return Retorno
             
@@ -209,7 +209,7 @@ class DesafioSql(PostgreSqlConn):
                 cur.execute(f"""
                     UPDATE historico_partidas SET
                     data_finalizacao = '{dataAtual}',
-                    id_estado_partida = {estadoPartidaFinalizada[0].Id}
+                    id_estado_partida = {estadoPartidaRecusada[0].Id}
                     WHERE token = '{token}'
                 """)
 
@@ -393,8 +393,11 @@ class DesafioSql(PostgreSqlConn):
                         partidasParaDescer = jogadores[0][3]
                         if(jogadores[0][1] <= jogadores[1][1]):
                             partidasParaDescer = 2
-                        if(jogadores[0][1] == 6 and len(jogadoresTop) < 1 and jogadores[0][4] > 1):
-                            novoAndar = 1
+                        if(jogadores[0][1] == 6):
+                            if (len(jogadoresTop) < 1 and jogadores[0][4] > 1):
+                                novoAndar = 1  
+                            elif(len(jogadoresTop) > 0 and jogadores[0][2] < 2):
+                                novoAndar = (len(jogadoresTop) + 1)
                         elif(jogadores[0][2] < 2):
                             novoAndar = jogadores[0][1] - 1 if jogadores[0][1] > 6 else jogadores[0][1]
                         else:
@@ -483,6 +486,12 @@ class DesafioSql(PostgreSqlConn):
                                 data_atualizacao = '{dataAtual}',
                                 vitorias_consecutivas = {(jogadores[0][4] + 1)}
                                 WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
+                            """)
+                        cur.execute(f"""
+                            UPDATE ranqueamento SET
+                                data_atualizacao = '{dataAtual}',
+                                vitorias_consecutivas = 0
+                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
                             """)
                 
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"

@@ -51,7 +51,7 @@ def run_discord_bot():
     async def checkMatches():
         try:
             expirarPartidas = rotinasDB.ExpirarPartidas()
-            txtActivity = f"SOKUTOWER: Use ;help para ver os comandos! | {datetime.now().strftime('%X')} \n {expirarPartidas.resultado}"
+            txtActivity = f"SOKUTOWER: Use ;help para ver os comandos! | {datetime.now().strftime('%d/%m/%Y | %X')} \n {expirarPartidas.resultado}"
             print(txtActivity)
         except Exception as e:
             print(e)
@@ -281,7 +281,7 @@ def run_discord_bot():
                 await ctx.send("O usuário não é jogador da partida informada.")
                 return
 
-            await ctx.send(f'Resultado informado: <@{desafiante}> [{vitoriasDesafiante}] - [{vitoriasDesafiado}] <@{desafiado}>  para a partida de token {token}. Para confirmar o resultado, o <@{usuarioAceitador.id}> deve digitar "sim" ou "s" em 30 segundos.')
+            await ctx.send(f'Resultado informado: <@{desafiante}> [{vitoriasDesafiante}] - [{vitoriasDesafiado}] <@{desafiado}>  para a partida de token {token}. Para confirmar o resultado, <@{usuarioAceitador.id}> deve digitar "sim" ou "s" em 30 segundos.')
             try:
                 msg = await bot.wait_for('message', check=check, timeout=31.0)
             except asyncio.TimeoutError:

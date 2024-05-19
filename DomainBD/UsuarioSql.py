@@ -176,12 +176,12 @@ class UsuarioSql(PostgreSqlConn):
             usuarios = cur.fetchall()
             for usuario in usuarios:
                 andarAtual = Mensagens.LISTA_ANDARES_CAIXA_ALTA[usuario[1]-1]
-                nomeJogador = f"~~{usuario[0].upper()}~~" if usuario[5] == '0' else usuario[0].upper()
-                nomeJogador = f"**{nomeJogador}**" if usuario[4] == 'ORGANIZADOR' else nomeJogador
+                nomeJogador = f"† {usuario[0].lower()}" if usuario[5] == '0' else usuario[0].upper()
+                nomeJogador = f"★ {nomeJogador}" if usuario[4] == 'ORGANIZADOR' else nomeJogador
 
                 novoJogador = [nomeJogador,andarAtual, usuario[2], usuario[3], usuario[6]]
                 jogadores.append(novoJogador)
-                if(len(jogadores) > 25): break
+                if(len(jogadores) > 30): break
 
             output = t2a(
                 header=["Nome","Andar", "↑", "↓", "VC" ],
