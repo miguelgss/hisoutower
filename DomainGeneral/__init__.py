@@ -1,0 +1,1 @@
+from DomainGeneral.DataTransferObjects import GerarFichaDTO, JogadorInputDTO

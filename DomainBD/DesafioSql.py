@@ -1,10 +1,11 @@
 import psycopg2
 import traceback
+import math
 from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
 from .PostgreSqlConn import PostgreSqlConn
-from .DataTransferObjects import DBResultado
+from .DataTransferObjects import DBResultado, FichaDTO
 from .TabelasDominioSql import TabelasDominioSql
 
 class DesafioSql(PostgreSqlConn):
@@ -19,36 +20,25 @@ class DesafioSql(PostgreSqlConn):
         dataAtual = datetime.now()
         dataExpiracao = dataAtual + timedelta(days=3)
         tokenPartida = ""
-        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
         IdDiscordDesafiante = DesafianteUser.id
         IdDiscordDesafiado = DesafiadoUser.id
+        temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual().Id
+
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual, ranqueamento.vitorias_consecutivas from usuario
+            stringQueryJogador = f"""
+                select usuario.id, ranqueamento.id_temporada, ranqueamento.power from usuario
                 join ranqueamento on id_usuario = usuario.id 
-                where usuario.discord_id_user  = '{IdDiscordDesafiante}' and usuario.ativo = '1'
-                order by ranqueamento.id  desc 
-                """)
-            jogadores.append(cur.fetchone())
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_temporada, ranqueamento.id_andar_atual, ranqueamento.vitorias_consecutivas from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.discord_id_user  = '{IdDiscordDesafiado}' and usuario.ativo = '1'
-                order by ranqueamento.id  desc 
-                """)
+                where usuario.discord_id_user  = '$IdDiscord' and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual}
+                order by ranqueamento.id  desc;
+            """
+            cur.execute(stringQueryJogador.replace('$IdDiscord', str(IdDiscordDesafiante)))
             jogadores.append(cur.fetchone())
 
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
-                from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6
-                order by ranqueamento.id_andar_atual 
-                """)
-            jogadoresTop = cur.fetchall()
+            cur.execute(stringQueryJogador.replace('$IdDiscord', str(IdDiscordDesafiado)))
+            jogadores.append(cur.fetchone())
             
             if(jogadores[0] != None and jogadores[1] != None):
                 if(jogadores[0][0] == jogadores[1][0]):
@@ -57,34 +47,13 @@ class DesafioSql(PostgreSqlConn):
                     Retorno.resultado += "Não é possível desafiar a si mesmo."
                     Retorno.corResultado = Cores.Alerta
                     return Retorno
-
-                # Comparação de andares entre os jogadores:
-                if(jogadores[0][2] > 2 and len(jogadoresTop) > 1):
-                    if(jogadores[1][2] == 1):
-                        cur.close()
-                        conn.close()
-                        Retorno.resultado += "Apenas o jogador mais próximo do campeão pode desafiá-lo."
-                        Retorno.corResultado = Cores.Alerta
-                        return Retorno
                 
-                minimoVitorias = 2
-                if  (
-                        (jogadores[0][2] > 6 and jogadoresTop != [] and jogadores[1][2] <= jogadoresTop[-1][1]) or 
-                        (jogadores[0][2] == 6 and jogadoresTop != [] and (jogadores[1][2] < jogadoresTop[-1][1]) or 
-                        (jogadores[0][3] < minimoVitorias and jogadoresTop != [] and jogadores[1][2] == jogadoresTop[-1][1]))
-                    ):
-                    cur.close()
-                    conn.close()
-                    Retorno.resultado += "É necessário estar no maior andar possível e **possuir duas vitórias consecutivas** para desafiar o último da elite. **Jogadores em andar da torre não podem desafiar jogadores celestiais, exceto pelo último jogador celestial.**"
-                    Retorno.corResultado = Cores.Alerta
-                    return Retorno
-
                 # Valida se o desafiador e/ou desafiante já possuem desafios em andamento
                 cur.execute(f"""
                     SELECT ID FROM historico_partidas 
                     where (id_usuario_desafiante = '{jogadores[0][0]}' or
                     (id_usuario_desafiante = '{jogadores[1][0]}' and id_usuario_desafiado = '{jogadores[0][0]}')) and
-                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
+                    (estado_partida = '{Mensagens.EP_AGUARDANDO}')
                     """)
                 desafianteJaPossuiPartida = cur.fetchone()
                 if(desafianteJaPossuiPartida != None):
@@ -97,7 +66,7 @@ class DesafioSql(PostgreSqlConn):
                     SELECT ID FROM historico_partidas 
                     where (id_usuario_desafiado = '{jogadores[1][0]}' or
                     (id_usuario_desafiante = '{jogadores[0][0]}' and id_usuario_desafiado = '{jogadores[1][0]}')) and
-                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
+                    (estado_partida = '{Mensagens.EP_AGUARDANDO}')
                     """)
 
                 desafiadoJaPossuiPartida = cur.fetchone()
@@ -113,14 +82,12 @@ class DesafioSql(PostgreSqlConn):
                     cur.execute(f"SELECT id, token from historico_partidas where token = '{tokenPartida}'")
                     pesquisaToken = cur.fetchone()
 
-                cur.execute(f"SELECT id from estado_partida where nome = '{Mensagens.EP_AGUARDANDO}'")
-                idEstadoPartida = cur.fetchone()[0]
                 cur.execute(f"""
                     INSERT INTO historico_partidas(
-                        id_usuario_requisicao, id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, data_criacao, data_expiracao, token
+                        id_usuario_requisicao, id_usuario_desafiante, id_usuario_desafiado, estado_partida, data_criacao, data_expiracao, token, id_temporada
                         )
                     VALUES(
-                        {jogadores[0][0]}, {jogadores[0][0]}, {jogadores[1][0]}, {idEstadoPartida}, '{dataAtual}', '{dataExpiracao}' , '{tokenPartida}'
+                        {jogadores[0][0]}, {jogadores[0][0]}, {jogadores[1][0]}, '{Mensagens.EP_AGUARDANDO}', '{dataAtual}', '{dataExpiracao}' , '{tokenPartida}', {temporadaAtual}
                     );
                 """)
                 Retorno.resultado = f"""
@@ -154,14 +121,12 @@ class DesafioSql(PostgreSqlConn):
     def RecusarDesafio(self, token, IdDiscordAnulador):
         Retorno = DBResultado()
         dataAtual = datetime.now()
-        estadoPartidaRecusada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_RECUSADO])
-        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
         idEstadoPartida = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
             cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual from usuario
+                select usuario.id, ranqueamento.power from usuario
                 join ranqueamento on ranqueamento.id_usuario = usuario.id
                 where usuario.discord_id_user  = '{IdDiscordAnulador}' and usuario.ativo = '1'
                 """)
@@ -179,7 +144,7 @@ class DesafioSql(PostgreSqlConn):
                     where token = '{token}' and 
                     (id_usuario_desafiado = {jogador[0]} or
                     id_usuario_desafiante = {jogador[0]} ) and
-                    (id_estado_partida = {estadoPartidaAguardando[0].Id})
+                    (estado_partida = '{Mensagens.EP_AGUARDANDO}')
                 """)
             
             partida = cur.fetchone()
@@ -202,14 +167,14 @@ class DesafioSql(PostgreSqlConn):
             houveDesafioRecente = cur.fetchone()
 
             idOponente = partida[1] if partida[1] == jogador[0] else partida[2]
-            cur.execute(f"""SELECT id_andar_atual from ranqueamento where id_usuario = {idOponente}""")
+            cur.execute(f"""SELECT power from ranqueamento where id_usuario = {idOponente}""")
             oponente = cur.fetchone()
 
             if(oponente[0] > jogador[1] or houveDesafioRecente != None): #Comparando os andares de cada jogador
                 cur.execute(f"""
                     UPDATE historico_partidas SET
                     data_finalizacao = '{dataAtual}',
-                    id_estado_partida = {estadoPartidaRecusada[0].Id}
+                    estado_partida = '{Mensagens.EP_RECUSADO}'
                     WHERE token = '{token}'
                 """)
 
@@ -238,21 +203,21 @@ class DesafioSql(PostgreSqlConn):
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            cardDesafiante = await self.ObterPerfil(DiscordDesafiante, '')
-            cardDesafiado = await self.ObterPerfil(DiscordDesafiado, '')
-            cur.execute(f"""
-                        SELECT usuario.tipo_ficha
-                        FROM usuario
-                        WHERE usuario.discord_id_user = '{DiscordDesafiante.id}' 
-                        """)
-            desafianteChar = cur.fetchone()[0]
-            cur.execute(f"""
-                        SELECT usuario.tipo_ficha
-                        FROM usuario
-                        WHERE usuario.discord_id_user = '{DiscordDesafiado.id}' 
-                        """)
-            desafiadoChar = cur.fetchone()[0]
-            Retorno.arquivo = await Gerador.GerarCardDesafio(cardDesafiante.arquivo, desafianteChar, cardDesafiado.arquivo, desafiadoChar)
+            cardDesafiante = await self.ObterPerfil(DiscordDesafiante)
+            cardDesafiado = await self.ObterPerfil(DiscordDesafiado)
+
+            stringQueryFicha = f"""
+                SELECT u.main
+                FROM usuario u
+                WHERE u.discord_id_user = '$IdDiscord' 
+            """
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiante.id)))
+            desafianteMain = cur.fetchone()[0]
+
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiado.id)))
+            desafiadoMain = cur.fetchone()[0]
+
+            Retorno.arquivo = await Gerador.GerarCardDesafio(cardDesafiante.arquivo, desafianteMain, cardDesafiado.arquivo, desafiadoMain)
             Retorno.corResultado = Cores.Sucesso
         except Exception as e:
             cur.close()
@@ -266,9 +231,7 @@ class DesafioSql(PostgreSqlConn):
         Retorno = DBResultado()
         partida = ''
         dataAtual = datetime.now()
-        estadoPartidaFinalizada = self.tabelasDominioDB.GetEstadoPartida(Mensagens.LISTA_EP_FINALIZADA)
-        estadoPartidaConcluida = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CONCLUIDO])
-        idEstadoPartidasFinalizadas = [o.Id for o in estadoPartidaFinalizada]
+        estadoPartidasFinalizadas = Mensagens.LISTA_EP_FINALIZADA
         VitoriosoId = 0
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
@@ -283,34 +246,36 @@ class DesafioSql(PostgreSqlConn):
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
             cur.execute(f"""     
-                select hp.id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, ep.nome
+                select hp.id,id_usuario_desafiante, id_usuario_desafiado, hp.estado_partida
                 from historico_partidas hp
-                join estado_partida ep on ep.id = hp.id_estado_partida
-                where hp.token = '{token}'
+                where hp.token like '%{token}'
                 """)
             partida = cur.fetchone()
             
-            if(partida[3] in idEstadoPartidasFinalizadas):
+            if(partida[3] in estadoPartidasFinalizadas):
                 cur.close()
                 conn.close()
-                Retorno.resultado += f"Essa partida possui o estado de {partida[4]}, não é possível mudar o seu resultado." if partida[3] != Mensagens.EP_CANCELADO else f"Essa partida foi cancelada por expiração. Favor relatar seu resultado pelo comando de ConcluirPartidaExpirada."
+                Retorno.resultado += f"Essa partida possui o estado de {partida[3]}, não é possível mudar o seu resultado." if partida[3] != Mensagens.EP_EXPIRADO else f"Essa partida foi cancelada por expiração. Um organizador deve relatar seu resultado pelo comando de ConcluirPartidaExpirada."
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
 
             VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
             DerrotadoId = partida[1] if vitoriasDesafiante < vitoriasDesafiado else partida[2]
             
+            VitoriosoVitorias = vitoriasDesafiante if vitoriasDesafiante > vitoriasDesafiado else vitoriasDesafiado
+            DerrotadoVitorias = vitorioasDesafiante if vitoriasDesafiante < vitoriasDesafiado else vitoriasDesafiado
+
             cur.execute(f"""
                     UPDATE 
-                        historico_partidas set id_estado_partida = {estadoPartidaConcluida[0].Id}, 
+                        historico_partidas set estado_partida = '{Mensagens.EP_CONCLUIDO}', 
                         usuario_desafiante_vitorias = {vitoriasDesafiante}, 
                         usuario_desafiado_vitorias = {vitoriasDesafiado}, 
                         id_usuario_vencedor = {VitoriosoId},
                         data_finalizacao = '{dataAtual}'
-                    WHERE token = '{token}'
+                    WHERE token like '%{token}'
                 """)
             
-            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, False)
+            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, VitoriosoVitorias, DerrotadoVitorias, False)
             if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
                 cur.close()
                 conn.close()
@@ -343,156 +308,55 @@ class DesafioSql(PostgreSqlConn):
             Retorno.corResultado = Cores.Erro
         return Retorno
 
-    def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado, foiEmpate):
+    def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado, VitoriosoVitorias, DerrotadoVitorias, foiEmpate):
         Retorno = DBResultado()
         dataAtual = datetime.now()
-        jogadores = []
-        jogadoresTop = []
         tokenPartida = ""
         temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
         numeroDeAndaresAtual = self.tabelasDominioDB.GetNumeroDeAndaresAtual()
+        andaresAtual = self.tabelasDominioDB.GetAndaresAtual()
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
+            stringQueryJogador = f"""
+                select usuario.id, r.power, r.id, usuario.pontos
                 from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.id  = {IdDiscordVitorioso} and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.Id}
-                order by ranqueamento.id  desc 
-                """)
-            jogadores.append(cur.fetchone())
+                join ranqueamento r on id_usuario = usuario.id
+                where usuario.id  = '$IdJogador' and usuario.ativo = '1' and r.id_temporada = {temporadaAtual.Id}
+                order by r.id  desc 
+                """
+            cur.execute(stringQueryJogador.replace('$IdJogador', str(IdDiscordVitorioso)))
+            vitorioso = cur.fetchone()
 
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
-                from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.id  = {IdDiscordDerrotado} and usuario.ativo = '1' and ranqueamento.id_temporada = {temporadaAtual.Id}
-                order by ranqueamento.id  desc 
-                """)
-            jogadores.append(cur.fetchone())
-
-            cur.execute(f"""
-                select usuario.id, ranqueamento.id_andar_atual, ranqueamento.partidas_para_subir, ranqueamento.partidas_para_descer, ranqueamento.vitorias_consecutivas
-                from usuario
-                join ranqueamento on id_usuario = usuario.id 
-                where usuario.ativo = '1' and ranqueamento.id_andar_atual < 6 and ranqueamento.id_temporada = {temporadaAtual.Id}
-                order by ranqueamento.id_andar_atual
-                """)
-            jogadoresTop = cur.fetchall()
+            cur.execute(stringQueryJogador.replace('$IdJogador', str(IdDiscordDerrotado)))
+            derrotado = cur.fetchone()
             
             if(foiEmpate):
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
                 Retorno.corResultado = Cores.Sucesso
-            elif(jogadores[0] != None and jogadores[1] != None):
-                if(jogadores[0][1] > 5): # Se o andar do jogador vitorioso for da torre...
-                    if(jogadores[1][1] > 5): # Se o derrotado for da torre...
-                        # Atualizando dados do vencedor
-                        novoAndar = jogadores[0][1]
-                        partidasParaSubir = 2
-                        partidasParaDescer = jogadores[0][3]
-                        if(jogadores[0][1] <= jogadores[1][1]):
-                            partidasParaDescer = 2
-                        if(jogadores[0][1] == 6):
-                            if (len(jogadoresTop) < 1 and jogadores[0][4] > 1):
-                                novoAndar = 1  
-                            elif(len(jogadoresTop) > 0 and jogadores[0][2] < 2):
-                                novoAndar = (len(jogadoresTop) + 1)
-                        elif(jogadores[0][2] < 2):
-                            novoAndar = jogadores[0][1] - 1 if jogadores[0][1] > 6 else jogadores[0][1]
-                        else:
-                            partidasParaSubir = 1
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                id_andar_atual = {novoAndar},
-                                partidas_para_subir = {partidasParaSubir},
-                                partidas_para_descer = {partidasParaDescer},
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
+            elif(vitorioso != None and derrotado != None):
+                cur.execute(f'select multiplicador from andar where min_points <= {vitorioso[1]} order by min_points desc limit 1;')
+                vitoriosoAndarMulti = cur.fetchone()[0]
 
-                        # Atualizando dados do derrotado
-                        if(jogadores[1][3] < 2):
-                            estaNoUltimoAndar = 0 if jogadores[1][1] == numeroDeAndaresAtual else 1
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    id_andar_atual = {(jogadores[1][1] + estaNoUltimoAndar)},
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = 2,
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = 0
-                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
-                        else:
-                            estaNoUltimoAndar = 2 if jogadores[1][1] == numeroDeAndaresAtual else 1
-                            cur.execute(f"""
-                                UPDATE ranqueamento SET
-                                    partidas_para_subir = 2,
-                                    partidas_para_descer = {estaNoUltimoAndar},
-                                    data_atualizacao = '{dataAtual}',
-                                    vitorias_consecutivas = 0
-                                    WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                                """)
+                cur.execute(f'select multiplicador from andar where min_points <= {derrotado[1]} order by min_points desc limit 1;')
+                derrotadoAndarMulti = cur.fetchone()[0]
 
-                    # Se o derrotado for da elite...
-                    elif(jogadores[0][1] == 6 and jogadoresTop != None and jogadores[1][1] == jogadoresTop[-1][1]):
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                id_andar_atual = {jogadores[-1][1]},
-                                partidas_para_subir = 2,
-                                partidas_para_descer = 2,
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                id_andar_atual = {(jogadores[1][1] + 1)},
-                                partidas_para_subir = 2,
-                                partidas_para_descer = 2,
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = 0
-                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
-                        
-                else: # Se o jogador vitorioso fizer parte dos celestiais...
-                    if(jogadores[0][1] >= jogadores[1][1]): # Comparando os andares
-                        posicaoTomada = jogadores[0][1] - 1
+                vitoriosoGanhoPower = math.ceil((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60 + (10 * VitoriosoVitorias - DerrotadoVitorias))
+                derrotadoPerdaPower = math.floor((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60 + (10 * VitoriosoVitorias - DerrotadoVitorias))
 
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                id_andar_atual = {posicaoTomada},
-                                partidas_para_subir = 2,
-                                partidas_para_descer = 2,
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
+                derrotadoPerdaPower = derrotadoPerdaPower if (derrotado[1] - derrotadoPerdaPower > 0) else 0
 
-                        vaiTomarPosicaoDoPerdedor = 1 if posicaoTomada == jogadores[1][1] else 0
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                id_andar_atual = {jogadores[1][1] + vaiTomarPosicaoDoPerdedor},
-                                partidas_para_subir = 2,
-                                partidas_para_descer = 2,
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = 0
-                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                            """) 
-                    else:
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = {(jogadores[0][4] + 1)}
-                                WHERE id_usuario = {jogadores[0][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
-                        cur.execute(f"""
-                            UPDATE ranqueamento SET
-                                data_atualizacao = '{dataAtual}',
-                                vitorias_consecutivas = 0
-                                WHERE id_usuario = {jogadores[1][0]} and id_temporada = {temporadaAtual.Id};
-                            """)
+                vitoriosoGanhoPontos = (VitoriosoVitorias - DerrotadoVitorias) * 100
+                derrotadoGanhoPontos = 100
+                cur.execute(
+                    f'''
+                    update ranqueamento set power = {vitorioso[1] + vitoriosoGanhoPower} where id = {vitorioso[2]};
+                    update ranqueamento set power = {derrotado[1] - derrotadoPerdaPower} where id = {derrotado[2]};
+
+                    update usuario set pontos = {vitorioso[3] + vitoriosoGanhoPontos} where id = {vitorioso[0]};
+                    update usuario set pontos = {derrotado[3] + derrotadoGanhoPontos} where id = {derrotado[0]};
+                    '''
+                )
                 
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
                 Retorno.corResultado = Cores.Sucesso
@@ -514,9 +378,6 @@ class DesafioSql(PostgreSqlConn):
         Retorno = DBResultado()
         partida = ''
         dataAtual = datetime.now()
-        estadoPartidaCancelada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO])
-        estadoPartidaEmpate = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_EMPATE])
-        estadoPartidaVitoriaAusencia = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_JOGADOR_AUSENTE])
         VitoriosoId = 0
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
@@ -532,10 +393,9 @@ class DesafioSql(PostgreSqlConn):
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
             cur.execute(f"""     
-                select hp.id,id_usuario_desafiante, id_usuario_desafiado, id_estado_partida, ep.nome
+                select hp.id,id_usuario_desafiante, id_usuario_desafiado, estado_partida
                 from historico_partidas hp
-                join estado_partida ep on ep.id = hp.id_estado_partida
-                where hp.token = '{token}' and id_estado_partida = {estadoPartidaCancelada[0].Id}
+                where hp.token = '{token}' and estado_partida = {Mensagens.EP_EXPIRADO}
                 """)
             partida = cur.fetchone()
 
@@ -549,10 +409,12 @@ class DesafioSql(PostgreSqlConn):
             VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
             DerrotadoId = partida[1] if vitoriasDesafiante < vitoriasDesafiado else partida[2]
             
+            VitoriosoVitorias = vitoriasDesafiante if vitoriasDesafiante > vitoriasDesafiado else vitoriasDesafiado
+            DerrotadoVitorias = vitorioasDesafiante if vitoriasDesafiante < vitoriasDesafiado else vitoriasDesafiado
             if(Empate):
                 cur.execute(f"""
                         UPDATE 
-                            historico_partidas set id_estado_partida = {estadoPartidaEmpate[0].Id}, 
+                            historico_partidas set estado_partida = {Mensagens.EP_EMPATE}, 
                             usuario_desafiante_vitorias = {vitoriasDesafiante}, 
                             usuario_desafiado_vitorias = {vitoriasDesafiado}, 
                             data_finalizacao = '{dataAtual}'
@@ -561,7 +423,7 @@ class DesafioSql(PostgreSqlConn):
             else:
                 cur.execute(f"""
                         UPDATE 
-                            historico_partidas set id_estado_partida = {estadoPartidaVitoriaAusencia[0].Id}, 
+                            historico_partidas set estado_partida = {Mensagens.EP_JOGADOR_AUSENTE}, 
                             usuario_desafiante_vitorias = {vitoriasDesafiante}, 
                             usuario_desafiado_vitorias = {vitoriasDesafiado}, 
                             id_usuario_vencedor = {VitoriosoId},
@@ -569,7 +431,7 @@ class DesafioSql(PostgreSqlConn):
                         WHERE token = '{token}'
                     """)
             
-            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, Empate)
+            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, VitoriosoVitorias, DerrotadoVitorias, Empate)
             if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
                 cur.close()
                 conn.close()

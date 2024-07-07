@@ -22,3 +22,25 @@ class TemporadaDTO():
     Id = None
     Nome = ''
     TemporadaAtiva = False
+
+class ProdutoDTO():
+    Id = None
+    Nome = ''
+    TipoProduto = ''
+
+class AndarDTO():
+    Id = None
+    Nome = ''
+    MinimoPoints = 0
+    Ativo = False
+    DataCriacao = None
+    Boss = False
+
+class FichaDTO():
+    Id = None
+    IdUsuario = None
+    NomeUsuario = None
+    IdCorpo = None
+    CorpoNome = None
+    IdBordaCorpo = None
+    BordaCorpoNome = None

@@ -3,7 +3,9 @@ from io import BytesIO
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 from datetime import datetime, timedelta
 import traceback
+import math
 
+from DomainGeneral import GerarFichaDTO
 
 class Gerador():
     def GerarToken():
@@ -18,18 +20,22 @@ class Gerador():
 
         return f"gensou-{password}"
 
-    async def GerarCardPerfil(jogador, tipoFicha, andarAtual, podeSubirDeRank, podeDescerDeRank):
+    async def GerarCardPerfil(inputFichaDto:GerarFichaDTO):
         try:
+            inputFichaDto.Jogador
             avatarSize = (62, 62)
-            nome = str(jogador.display_name)
+            nome = str(inputFichaDto.Jogador.display_name)
 
-            template = Image.open(f"Utils/assets/botficha/base_ficha/{tipoFicha}.png").convert("RGBA")
-            iconeRank = Image.open(f"Utils/assets/botficha/sprites/floor/{andarAtual}.png")
-            upRank = Image.open(f"Utils/assets/botficha/sprites/rate/rateup.png")
-            downRank = Image.open(f"Utils/assets/botficha/sprites/rate/ratedown.png")
+            width = 420
+            height = 150
+
+            template = Image.open(f"Utils/assets/botficha/base_ficha/{inputFichaDto.TipoCorpo}.png").convert("RGBA")
+            iconeRank = Image.open(f"Utils/assets/botficha/sprites/floor/{inputFichaDto.IdAndar}.png")
+            iconePower = Image.open(f"Utils/assets/botficha/sprites/power.png").convert("RGBA")
+            iconePontos = Image.open(f"Utils/assets/botficha/sprites/pontos.png").convert("RGBA")
 
             # Configura a foto do usuário
-            picJogador = jogador.avatar
+            picJogador = inputFichaDto.Jogador.avatar
             dataJogador = BytesIO(await picJogador.read())
             picJogador = Image.open(dataJogador).convert("RGBA")
             picJogador = picJogador.resize(avatarSize, Image.ANTIALIAS).convert("RGBA")
@@ -37,21 +43,43 @@ class Gerador():
             # Começa a "desenhar" o card do jogador
             draw = ImageDraw.Draw(template)
 
-            fontNome = ImageFont.truetype("Utils/assets/fonts/spiegel.ttf", 30)
+            fontTamanhoNome = 32 if len(nome) < 20 else 16
+            fontNome = ImageFont.truetype("Utils/assets/fonts/spiegel.ttf", fontTamanhoNome)
             fontAndar = ImageFont.truetype("Utils/assets/fonts/spiegel.ttf", 14)
 
             ascent, descent = fontNome.getmetrics()
-            (width, baseline), (offset_x, offset_y) = fontNome.font.getsize(nome)
+            (widthf, baseline), (offset_x, offset_y) = fontNome.font.getsize(nome)
 
-            draw.text((210-(width/2),8), nome, font=fontNome, fill=(255,255,255, 255), stroke_fill=(0,0,0,255), stroke_width=1)
-            draw.text((110,66), andarAtual.upper(), font=fontAndar, fill=(255,255,255, 255), stroke_fill=(0,0,0,255), stroke_width=1)
+            stroke_text = (0,0,0,255)
+            fill_text = (255, 255, 255, 255)
+
+            draw.text((210-(widthf/2), math.fabs(fontTamanhoNome - 28)), nome, font=fontNome, fill=fill_text, stroke_fill=stroke_text, stroke_width=1)
+            draw.text((110,66), inputFichaDto.NomeAndar.upper(), font=fontAndar, fill=fill_text, stroke_fill=stroke_text, stroke_width=1)
+
+            pontos_w, pontos_h = draw.textsize(str(inputFichaDto.Pontos), font=fontAndar, direction="rtl")
+            draw.text((32,height - pontos_h - 8), str(inputFichaDto.Power), font=fontAndar, fill=fill_text, stroke_fill=stroke_text, stroke_width=1)
+
+            pontos_w, pontos_h = draw.textsize(str(inputFichaDto.Pontos), font=fontAndar, direction="rtl")
+            draw.text(
+                # (0, 0),  # top left corner
+                # (width - text_w, 0), # top right corner
+                (width - pontos_w - 16, height - pontos_h - 8), # bottom right corner
+                # (0, height - text_h),  # bottom left corner
+                # ((width - text_w) // 2, (height - text_h) // 2),  # center
+                # (width - text_w, (height - text_h) // 2),  # center vertical + start from right
+                str(inputFichaDto.Pontos),
+                font=fontAndar,
+                fill=fill_text,
+                stroke_fill=stroke_text,
+                stroke_width=1,
+                direction='rtl',
+                align='left',
+            )
 
             template.paste(picJogador, (21,31), picJogador)
             template.paste(iconeRank, (3,0), iconeRank)
-            if(podeSubirDeRank):
-                template.paste(upRank, (20, 0), upRank)
-            if(podeDescerDeRank):
-                template.paste(downRank, (20, 0), downRank)
+            template.paste(iconePontos, ((width - pontos_w - 32), (height - pontos_h - 8)), iconePontos)
+            template.paste(iconePower, (16, (height - pontos_h - 8)), iconePower)
 
             retorno = None
             img = BytesIO()

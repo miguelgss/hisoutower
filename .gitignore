@@ -4,3 +4,5 @@ sqlsettings.txt
 psql.txt
 __pycache__
 discloud.config
+.venvhts
+*.drawio

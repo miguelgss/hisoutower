@@ -18,14 +18,15 @@ class RotinasAutomaticas(PostgreSqlConn):
         search = None
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
-        estadoPartidaCancelada = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_CANCELADO])
-        estadoPartidaAguardando = self.tabelasDominioDB.GetEstadoPartida([Mensagens.EP_AGUARDANDO])
+        temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual().Id
 
         contador = 0
         try:
-            cur.execute(f"""SELECT id_usuario_desafiante, id_usuario_desafiado, token FROM historico_partidas 
+            cur.execute(f"""
+                SELECT id_usuario_desafiante, id_usuario_desafiado, token FROM historico_partidas 
                 WHERE data_expiracao < '{dataAtual}' and
-                id_estado_partida = {estadoPartidaAguardando[0].Id}
+                estado_partida = '{Mensagens.EP_AGUARDANDO}' and
+                id_temporada = {temporadaAtual}
                 """)
             partidasEmExpiracao = cur.fetchall()
 
@@ -37,9 +38,9 @@ class RotinasAutomaticas(PostgreSqlConn):
                 contador += 1
 
             cur.execute(f"""
-                    UPDATE historico_partidas set id_estado_partida = {estadoPartidaCancelada[0].Id}, data_finalizacao = '{dataAtual}'
+                    UPDATE historico_partidas set estado_partida = '{Mensagens.EP_EXPIRADO}', data_finalizacao = '{dataAtual}'
                     WHERE data_expiracao < '{dataAtual}' and
-                    id_estado_partida = {estadoPartidaAguardando[0].Id}
+                    estado_partida = '{Mensagens.EP_AGUARDANDO}'
                 """)
                 
             Retorno.resultado = f"Número de partidas canceladas por expiração desde a última atualização: {contador}"

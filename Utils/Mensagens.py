@@ -12,7 +12,7 @@ class Mensagens():
     EP_AGUARDANDO = "AGUARDANDO"
     EP_RECUSADO = "RECUSADO"
     EP_CONCLUIDO = "CONCLUÍDO"
-    EP_CANCELADO = "EXPIRADO"
+    EP_EXPIRADO = "EXPIRADO"
     EP_JOGADOR_AUSENTE = "AUSENTE"
     EP_EMPATE = "EMPATE"
     EP_ESPERANDO_CONFIRMACAO_JOGADOR = "ESPERANDO_CONFIRMACAO_JOGADOR"
@@ -25,7 +25,7 @@ class Mensagens():
     A_TERCEIRO = "TERCEIRO[ELITE]"
     A_QUARTO = "QUARTO[ELITE]"
 
-    LISTA_FICHA_PERSONAGENS = [
+    LISTA_MAINS = [
         "alice",
         "aya",
         "cirno",
@@ -51,7 +51,7 @@ class Mensagens():
     LISTA_EP_FINALIZADA = [
         EP_RECUSADO,
         EP_CONCLUIDO,
-        EP_CANCELADO,
+        EP_EXPIRADO,
         EP_JOGADOR_AUSENTE,
         EP_EMPATE
     ]
@@ -77,3 +77,7 @@ class Mensagens():
         'TORRE 2',
         'TORRE 3',
     ]
+
+    TP_CORPO = 'corpo'
+    TP_BORDA_CORPO = 'borda_c'
+    TP_BORDA_FOTO = 'borda_f'
