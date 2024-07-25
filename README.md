@@ -1,4 +1,4 @@
-# Projeto de ladder manual - BOT Discord
+# Projeto de ladder automatizado não integrado - BOT Discord
 
 - Comunicação com discord: A biblioteca [discordpy](https://discordpy.readthedocs.io/en/stable/index.html);
 - Criação de fichas: A biblioteca [Pillow](https://pypi.org/project/pillow/);
@@ -17,7 +17,7 @@
 
 # Sobre
 
-**bothisoutower** é um projeto de ranqueamento manutenido manualmente pelo Discord, sendo primariamente feito para o jogo Touhou 12.3 Hisoutensoku mas que pode ser aplicado a qualquer outro contexto. Nele é possível se cadastrar no sistema e desafiar outros jogadores.
+**bothisoutower** é um projeto de ranqueamento manutenido automaticamente pelo Discord, sendo primariamente feito para o jogo Touhou 12.3 Hisoutensoku mas que pode ser aplicado a qualquer outro contexto. Nele é possível se cadastrar no sistema e desafiar outros jogadores subir no sistema de ranqueamento.
 
 [Aqui está documentado o que inspirou esse projeto](https://sites.google.com/site/gensouarena/home/competi%C3%A7%C3%B5es/htscada?authuser=0). As regras do bot são diretamente inspiradas pelo que está escrito nesse documento, com algumas adaptações que vão ser melhor descritas quando o bot chegar num estado estável e funcional.
 
