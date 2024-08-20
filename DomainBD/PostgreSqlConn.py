@@ -70,7 +70,7 @@ class PostgreSqlConn():
                     JOIN ficha f on f.id_usuario = u.id
                     LEFT JOIN produto p on p.id = f.id_corpo
                     LEFT JOIN produto p2 on (f.id_borda_corpo is null and p2.id is null) or f.id_borda_corpo = p2.id
-                    WHERE u.discord_id_user = '{discordUser.id}' 
+                    WHERE u.discord_id_user = '{discordUser.IdDiscord}' 
                     """)
             jogador = cur.fetchone()
             
@@ -82,7 +82,7 @@ class PostgreSqlConn():
                 return Retorno
             
             cur.execute(f"""
-                SELECT id, nome from andar where min_points <= {jogador[2]} order by min_points desc limit 1; 
+                SELECT id, nome from andar where min_points <= {jogador[1]} order by min_points desc limit 1; 
             """)
 
             andarAtual = cur.fetchone()

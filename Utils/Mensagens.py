@@ -34,7 +34,7 @@ class Mensagens():
         "marisa",
         "meiling",
         "okuu",
-        "patchy",
+        "patchouli",
         "reimu",
         "reisen",
         "remilia",

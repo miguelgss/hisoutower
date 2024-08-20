@@ -3,6 +3,12 @@ class DBResultado():
     arquivo = None
     corResultado = None
 
+class DBResultadoAtualizacaoPontos(DBResultado):
+    vP_antes = 0
+    vP_dps = 0
+    dP_antes = 0
+    dP_dps = 0
+
 class UsuarioDTO():
     IdDiscord = None
     Nome = ''

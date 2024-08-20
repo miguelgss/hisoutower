@@ -22,9 +22,8 @@ class Gerador():
 
     async def GerarCardPerfil(inputFichaDto:GerarFichaDTO):
         try:
-            inputFichaDto.Jogador
             avatarSize = (62, 62)
-            nome = str(inputFichaDto.Jogador.display_name)
+            nome = str(inputFichaDto.Nome)
 
             width = 420
             height = 150
@@ -35,7 +34,7 @@ class Gerador():
             iconePontos = Image.open(f"Utils/assets/botficha/sprites/pontos.png").convert("RGBA")
 
             # Configura a foto do usuário
-            picJogador = inputFichaDto.Jogador.avatar
+            picJogador = inputFichaDto.Avatar
             dataJogador = BytesIO(await picJogador.read())
             picJogador = Image.open(dataJogador).convert("RGBA")
             picJogador = picJogador.resize(avatarSize, Image.ANTIALIAS).convert("RGBA")
@@ -103,6 +102,41 @@ class Gerador():
             vS = Image.open(f"Utils/assets/base_desafio/icones/vs_icon.png").convert("RGBA")
             gensouLogo = Image.open(f"Utils/assets/base_desafio/icones/gensou_icon.png").convert("RGBA")
 
+            fichaDesafiante = Image.open(desafianteProfile)
+            fichaDesafiado = Image.open(desafiadoProfile)
+
+            canvas.paste(desafianteCharArt, (0, 0), desafianteCharArt)
+            canvas.paste(desafiadoCharArt, (0,0), desafiadoCharArt)
+            canvas.paste(fichaDesafiante, (((width//2)-210),0)  , fichaDesafiante)
+            canvas.paste(fichaDesafiado,  (((width//2)-210),height-150), fichaDesafiado)
+            canvas.paste(vS, (0,0), vS)
+            canvas.paste(gensouLogo, (0,0), gensouLogo)
+            
+            retorno = None
+            img = BytesIO()
+            canvas.save(img, "PNG")
+            img.seek(0)
+            return img
+        except Exception as e:
+            print(str(e))
+            print(str(traceback.format_exc()))
+
+    async def GerarCardResultado(desafianteProfile, desafianteChar, desafiadoProfile, desafiadoChar, vitoriasDesafiante, vitoriasDesafiado):
+        try:
+            width = 724
+            height = 408
+            canvas = Image.new("RGBA", (width,height), (255, 255, 255, 0))
+
+            desafianteCharType = "win" if vitoriasDesafiante == 4 else "loss"
+            desafiadoCharType = "win" if vitoriasDesafiado == 4 else "loss"
+
+            desafianteCharArt = Image.open(f"Utils/assets/base_desafio/{desafianteCharType}/{desafianteChar}.png").convert("RGBA") 
+            desafiadoCharArt  = Image.open(f"Utils/assets/base_desafio/{desafiadoCharType}/{desafiadoChar}.png").convert("RGBA")
+            desafiadoCharArt = ImageOps.mirror(desafiadoCharArt)
+
+            vS = Image.open(f"Utils/assets/base_desafio/icones/vs_icon.png").convert("RGBA")
+            gensouLogo = Image.open(f"Utils/assets/base_desafio/icones/gensou_icon.png").convert("RGBA")
+                
             fichaDesafiante = Image.open(desafianteProfile)
             fichaDesafiado = Image.open(desafiadoProfile)
 

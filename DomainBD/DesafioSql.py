@@ -5,15 +5,16 @@ from datetime import datetime, timedelta
 from Utils import Mensagens, Cores, Gerador
 
 from .PostgreSqlConn import PostgreSqlConn
-from .DataTransferObjects import DBResultado, FichaDTO
+from .DataTransferObjects import DBResultado, DBResultadoAtualizacaoPontos
 from .TabelasDominioSql import TabelasDominioSql
+from DomainGeneral import JogadorInputDTO
 
 class DesafioSql(PostgreSqlConn):
     def __init__(self):
         super(DesafioSql, self).__init__()
         self.tabelasDominioDB = TabelasDominioSql()
 
-    async def Desafiar(self, DesafianteUser, DesafiadoUser):
+    async def Desafiar(self, DesafianteUser:JogadorInputDTO, DesafiadoUser:JogadorInputDTO):
         Retorno = DBResultado()
         jogadores = []
         jogadoresTop = []
@@ -21,8 +22,8 @@ class DesafioSql(PostgreSqlConn):
         dataExpiracao = dataAtual + timedelta(days=3)
         tokenPartida = ""
         idEstadoPartida = None
-        IdDiscordDesafiante = DesafianteUser.id
-        IdDiscordDesafiado = DesafiadoUser.id
+        IdDiscordDesafiante = DesafianteUser.IdDiscord
+        IdDiscordDesafiado = DesafiadoUser.IdDiscord
         temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual().Id
 
         conn = psycopg2.connect(self.connectionString)
@@ -198,8 +199,8 @@ class DesafioSql(PostgreSqlConn):
 
         return Retorno
 
-    async def GerarImagemDesafio(self, DiscordDesafiante, DiscordDesafiado):
-        Retorno = DBResultado()        
+    async def GerarImagemDesafio(self, DiscordDesafiante:JogadorInputDTO, DiscordDesafiado:JogadorInputDTO):
+        Retorno = DBResultado()
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
@@ -211,10 +212,10 @@ class DesafioSql(PostgreSqlConn):
                 FROM usuario u
                 WHERE u.discord_id_user = '$IdDiscord' 
             """
-            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiante.id)))
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiante.IdDiscord)))
             desafianteMain = cur.fetchone()[0]
 
-            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiado.id)))
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiado.IdDiscord)))
             desafiadoMain = cur.fetchone()[0]
 
             Retorno.arquivo = await Gerador.GerarCardDesafio(cardDesafiante.arquivo, desafianteMain, cardDesafiado.arquivo, desafiadoMain)
@@ -227,12 +228,11 @@ class DesafioSql(PostgreSqlConn):
 
         return Retorno
 
-    def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado):
+    async def RelatarResultado(self, token, vitoriasDesafiante, vitoriasDesafiado, desafiante:JogadorInputDTO, desafiado:JogadorInputDTO):
         Retorno = DBResultado()
         partida = ''
         dataAtual = datetime.now()
         estadoPartidasFinalizadas = Mensagens.LISTA_EP_FINALIZADA
-        VitoriosoId = 0
         conn = psycopg2.connect(self.connectionString)
         cur = conn.cursor()
         try:
@@ -259,23 +259,32 @@ class DesafioSql(PostgreSqlConn):
                 Retorno.corResultado = Cores.Alerta
                 return Retorno
 
-            VitoriosoId = partida[1] if vitoriasDesafiante > vitoriasDesafiado else partida[2]
-            DerrotadoId = partida[1] if vitoriasDesafiante < vitoriasDesafiado else partida[2]
+            Vitorioso = desafiante if vitoriasDesafiante > vitoriasDesafiado else desafiado
+            Derrotado = desafiante if vitoriasDesafiante < vitoriasDesafiado else desafiado
             
             VitoriosoVitorias = vitoriasDesafiante if vitoriasDesafiante > vitoriasDesafiado else vitoriasDesafiado
-            DerrotadoVitorias = vitorioasDesafiante if vitoriasDesafiante < vitoriasDesafiado else vitoriasDesafiado
+            DerrotadoVitorias = vitoriasDesafiante if vitoriasDesafiante < vitoriasDesafiado else vitoriasDesafiado
+
+            cur.execute(
+                f"""
+                    select id
+                    from usuario u
+                    where u.discord_id_user = '{Vitorioso.IdDiscord}'
+                """
+            )
+            idVitorioso = cur.fetchone()[0]
 
             cur.execute(f"""
                     UPDATE 
                         historico_partidas set estado_partida = '{Mensagens.EP_CONCLUIDO}', 
                         usuario_desafiante_vitorias = {vitoriasDesafiante}, 
                         usuario_desafiado_vitorias = {vitoriasDesafiado}, 
-                        id_usuario_vencedor = {VitoriosoId},
+                        id_usuario_vencedor = {idVitorioso},
                         data_finalizacao = '{dataAtual}'
                     WHERE token like '%{token}'
                 """)
             
-            resultado = self.AtualizarRanqueamento(VitoriosoId, DerrotadoId, VitoriosoVitorias, DerrotadoVitorias, False)
+            resultado = self.AtualizarRanqueamento(Vitorioso.IdDiscord, Derrotado.IdDiscord, VitoriosoVitorias, DerrotadoVitorias, False)
             if(resultado.resultado != "Tudo certo com a atualização de resultados!"): 
                 cur.close()
                 conn.close()
@@ -284,19 +293,21 @@ class DesafioSql(PostgreSqlConn):
                 return Retorno
             
             usuarios = []
-            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[1]}")
+            cur.execute(f"SELECT discord_id_user FROM usuario WHERE id = {partida[1]}")
             usuarios.append(cur.fetchone())
-            cur.execute(f"SELECT id, discord_id_user FROM usuario WHERE id = {partida[2]}")
+            cur.execute(f"SELECT discord_id_user FROM usuario WHERE id = {partida[2]}")
             usuarios.append(cur.fetchone())
 
-            vitoriosoNome = usuarios[0][1] if usuarios[0][0] == VitoriosoId else usuarios[1][1]
+            vitoriosoNome = usuarios[0][0] if usuarios[0][0] == Vitorioso.IdDiscord else usuarios[1][0]
             
+            imgArquivo = await self.GerarImagemResultado(desafiante, desafiado, vitoriasDesafiante, vitoriasDesafiado)
             Retorno.resultado = f"""
-                    ## <@{usuarios[0][1]}> [{vitoriasDesafiante}] VS [{vitoriasDesafiado}] <@{usuarios[1][1]}> 
+                    ## <@{usuarios[0][0]}> [{vitoriasDesafiante}] VS [{vitoriasDesafiado}] <@{usuarios[1][0]}> 
                     ### PARTIDA CONCLUÍDA! PARABÉNS <@{vitoriosoNome}>
                     """
-
+            Retorno.arquivo = imgArquivo.arquivo
             Retorno.corResultado = Cores.Sucesso
+
             conn.commit()
             cur.close()
             conn.close()
@@ -309,7 +320,7 @@ class DesafioSql(PostgreSqlConn):
         return Retorno
 
     def AtualizarRanqueamento(self, IdDiscordVitorioso, IdDiscordDerrotado, VitoriosoVitorias, DerrotadoVitorias, foiEmpate):
-        Retorno = DBResultado()
+        Retorno = DBResultadoAtualizacaoPontos()
         dataAtual = datetime.now()
         tokenPartida = ""
         temporadaAtual = self.tabelasDominioDB.GetTemporadaAtual()
@@ -322,15 +333,18 @@ class DesafioSql(PostgreSqlConn):
                 select usuario.id, r.power, r.id, usuario.pontos
                 from usuario
                 join ranqueamento r on id_usuario = usuario.id
-                where usuario.id  = '$IdJogador' and usuario.ativo = '1' and r.id_temporada = {temporadaAtual.Id}
+                where usuario.discord_id_user = '$IdJogador' and usuario.ativo = '1' and r.id_temporada = {temporadaAtual.Id}
                 order by r.id  desc 
                 """
             cur.execute(stringQueryJogador.replace('$IdJogador', str(IdDiscordVitorioso)))
             vitorioso = cur.fetchone()
-
+            
             cur.execute(stringQueryJogador.replace('$IdJogador', str(IdDiscordDerrotado)))
             derrotado = cur.fetchone()
-            
+
+            Retorno.vP_antes = vitorioso[1]
+            Retorno.dP_antes = derrotado[1]
+
             if(foiEmpate):
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
                 Retorno.corResultado = Cores.Sucesso
@@ -341,11 +355,10 @@ class DesafioSql(PostgreSqlConn):
                 cur.execute(f'select multiplicador from andar where min_points <= {derrotado[1]} order by min_points desc limit 1;')
                 derrotadoAndarMulti = cur.fetchone()[0]
 
-                vitoriosoGanhoPower = math.ceil((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60 + (10 * VitoriosoVitorias - DerrotadoVitorias))
-                derrotadoPerdaPower = math.floor((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60 + (10 * VitoriosoVitorias - DerrotadoVitorias))
+                vitoriosoGanhoPower = math.ceil( float((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60) + (10 * VitoriosoVitorias - DerrotadoVitorias))
+                derrotadoPerdaPower = math.floor(float((derrotadoAndarMulti - vitoriosoAndarMulti + 1) * 60) + (10 * VitoriosoVitorias - DerrotadoVitorias) * 0.90)
 
                 derrotadoPerdaPower = derrotadoPerdaPower if (derrotado[1] - derrotadoPerdaPower > 0) else 0
-
                 vitoriosoGanhoPontos = (VitoriosoVitorias - DerrotadoVitorias) * 100
                 derrotadoGanhoPontos = 100
                 cur.execute(
@@ -358,6 +371,8 @@ class DesafioSql(PostgreSqlConn):
                     '''
                 )
                 
+                Retorno.vP_dps = vitorioso[1] + vitoriosoGanhoPower
+                Retorno.dP_dps = derrotado[1] - derrotadoPerdaPower
                 Retorno.resultado = "Tudo certo com a atualização de resultados!"
                 Retorno.corResultado = Cores.Sucesso
 
@@ -468,4 +483,33 @@ class DesafioSql(PostgreSqlConn):
             conn.close()
             Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
             Retorno.corResultado = Cores.Erro
+        return Retorno
+
+    async def GerarImagemResultado(self, DiscordDesafiante:JogadorInputDTO, DiscordDesafiado:JogadorInputDTO, vitoriasDesafiante, vitoriasDesafiado):
+        Retorno = DBResultado()
+        conn = psycopg2.connect(self.connectionString)
+        cur = conn.cursor()
+        try:
+            cardDesafiante = await self.ObterPerfil(DiscordDesafiante)
+            cardDesafiado = await self.ObterPerfil(DiscordDesafiado)
+
+            stringQueryFicha = f"""
+                SELECT u.main
+                FROM usuario u
+                WHERE u.discord_id_user = '$IdDiscord' 
+            """
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiante.IdDiscord)))
+            desafianteMain = cur.fetchone()[0]
+
+            cur.execute(stringQueryFicha.replace('$IdDiscord', str(DiscordDesafiado.IdDiscord)))
+            desafiadoMain = cur.fetchone()[0]
+
+            Retorno.arquivo = await Gerador.GerarCardResultado(cardDesafiante.arquivo, desafianteMain, cardDesafiado.arquivo, desafiadoMain, vitoriasDesafiante, vitoriasDesafiado)
+            Retorno.corResultado = Cores.Sucesso
+        except Exception as e:
+            cur.close()
+            conn.close()
+            Retorno.resultado += "Ocorreu um erro: \n" + str(traceback.format_exc())
+            Retorno.corResultado = Cores.Erro
+
         return Retorno

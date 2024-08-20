@@ -4,12 +4,27 @@ import discord
 from Utils import Cores
 
 from DomainBD import DesafioSql, UsuarioSql
+from DomainGeneral import JogadorInputDTO
 
 class Desafio(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.desafiosDB = DesafioSql()
         self.usuariosDB = UsuarioSql()
+
+    @staticmethod
+    def mapeiaDesafiantes(d1, d2):
+        desafiante = JogadorInputDTO()
+        desafiante.Avatar = d1.avatar
+        desafiante.IdDiscord = d1.id
+        desafiante.Nome = d1.name
+
+        desafiado = JogadorInputDTO()
+        desafiado.Avatar = d2.avatar
+        desafiado.IdDiscord = d2.id
+        desafiado.Nome = d2.name
+
+        return [desafiante, desafiado]
 
     @commands.command(
         brief=f'Desafia o usuário informado.', 
@@ -18,7 +33,8 @@ class Desafio(commands.Cog):
     )
     async def Desafiar(self,ctx, 
         user: discord.Member = commands.parameter(description="Nome ou ID do usuário que será desafiado.")):
-        resultado = await self.desafiosDB.Desafiar(ctx.author, user)
+        jogadores = self.mapeiaDesafiantes(ctx.author, user)
+        resultado = await self.desafiosDB.Desafiar(jogadores[0], jogadores[1])
         if(resultado.corResultado == Cores.Sucesso):
             file = discord.File(resultado.arquivo, filename="profile.png")
             await ctx.send(
@@ -93,12 +109,22 @@ class Desafio(commands.Cog):
                 return
             if(msg.content.lower() in ("sim", "s")):
                 print("Aceitado!")
-                resultado = self.desafiosDB.RelatarResultado(token, vitoriasDesafiante, vitoriasDesafiado)
-                await ctx.send(
-                embed = discord.Embed(title=f"Resultado:",
-                description=resultado.resultado,
-                color=resultado.corResultado)
-                )
+                jogadores = self.mapeiaDesafiantes(ctx.author, usuarioAceitador)
+
+                resultado = await self.desafiosDB.RelatarResultado(token, vitoriasDesafiante, vitoriasDesafiado, jogadores[0], jogadores[1])
+
+                if(resultado.corResultado == Cores.Sucesso):
+                    file = discord.File(resultado.arquivo, filename="profile.png")
+                    await ctx.send(
+                    resultado.resultado,
+                    file=file
+                    )
+                else:
+                    await ctx.send(
+                    embed = discord.Embed(title=f"Resultado:",
+                    description=resultado.resultado,
+                    color=resultado.corResultado)
+                    )
         else:
             await ctx.send(
             embed = discord.Embed(title="Ocorreu algum erro...",
